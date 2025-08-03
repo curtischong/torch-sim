@@ -10,7 +10,7 @@ import typing
 import warnings
 from collections import defaultdict
 from collections.abc import Generator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 import torch
