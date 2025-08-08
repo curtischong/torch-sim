@@ -16,12 +16,11 @@ from torch_sim.models.mace import MaceModel
 
 scale_volume = 1.0
 
-# Generate 200 random structures
 compound_init = [
     composition_to_random_structure(
-        Composition(f"Zn{np.random.randint(2, 5)}"), scale_volume=scale_volume
+        Composition(f"Zn{np.random.randint(2, 3)}"), scale_volume=scale_volume
     )
-    for _ in range(200)
+    for _ in range(500)
 ]
 
 # --- Placeholder definitions ---
@@ -39,10 +38,6 @@ mace_model = mace_mp(
 # Option 2: Load the compiled model from the local file
 # MODEL_PATH = "../../../checkpoints/MACE/mace-mpa-0-medium.model"
 # loaded_model = torch.load(MODEL_PATH, map_location=device)
-
-# Create diamond cubic Silicon
-si_dc = bulk("Si", "diamond", a=5.43, cubic=True).repeat((2, 2, 2))
-atoms_list = [si_dc, si_dc]
 
 batched_model = MaceModel(
     # Pass the raw model
