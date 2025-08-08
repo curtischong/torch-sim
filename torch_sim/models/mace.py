@@ -178,7 +178,7 @@ class MaceModel(ModelInterface):
             [int(z) for z in self.model.atomic_numbers]
         )
         self.model.atomic_numbers = (
-            self.model.atomic_numbers.detach().clone().to(device=self.device)
+            self.model.atomic_numbers.detach().clone().to(device=self._device)
         )
 
         # Store flag to track if atomic numbers were provided at init
@@ -193,6 +193,10 @@ class MaceModel(ModelInterface):
                 )
 
             self.setup_from_system_idx(atomic_numbers, system_idx)
+
+    @property
+    def device(self) -> torch.device:
+        return self._device
 
     def setup_from_system_idx(
         self, atomic_numbers: torch.Tensor, system_idx: torch.Tensor
