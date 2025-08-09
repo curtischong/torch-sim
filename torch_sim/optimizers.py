@@ -664,7 +664,7 @@ def fire(
     return fire_init, functools.partial(step_func, **step_func_kwargs)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class UnitCellFireState(SimState, DeformGradMixin):
     """State information for batched FIRE optimization with unit cell degrees of
     freedom.
