@@ -174,7 +174,7 @@ def gradient_descent(
     return gd_init, gd_step
 
 
-@dataclass
+@dataclass(kw_only=True)
 class UnitCellGDState(GDState, DeformGradMixin):
     """State class for batched gradient descent optimization with unit cell.
 
