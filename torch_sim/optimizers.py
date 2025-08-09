@@ -1014,8 +1014,8 @@ class FrechetCellFIREState(SimState, DeformGradMixin):
     stress: torch.Tensor
 
     # Optimization-specific attributes
-    reference_cell: torch.Tensor
-    row_vector_cell: torch.Tensor
+    # reference_cell: torch.Tensor
+    # row_vector_cell: torch.Tensor
     cell_factor: torch.Tensor
     pressure: torch.Tensor
     hydrostatic_strain: bool
@@ -1232,6 +1232,9 @@ def frechet_cell_fire(
             # Cell attributes
             cell_positions=cell_positions,
             cell_velocities=torch.full(
+                cell_forces.shape, torch.nan, device=device, dtype=dtype
+            ),
+            row_vector_cell=torch.full(
                 cell_forces.shape, torch.nan, device=device, dtype=dtype
             ),
             cell_forces=cell_forces,
