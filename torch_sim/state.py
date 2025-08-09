@@ -210,7 +210,7 @@ class SimState:
         return self.n_atoms_per_system
 
     @property
-    def batch(self) -> torch.Tensor | None:
+    def batch(self) -> torch.Tensor:
         """System indices.
 
         deprecated::
@@ -415,6 +415,12 @@ class SimState:
         Also enforce all of child classes's attributes are specified in _atom_attributes,
         _system_attributes, or _global_attributes.
         """
+        cls._assert_no_tensor_attributes_can_be_none()
+        cls._assert_all_attributes_have_defined_scope()
+        super().__init_subclass__(**kwargs)
+
+    @classmethod
+    def _assert_no_tensor_attributes_can_be_none(cls) -> None:
         # We need to use get_type_hints to correctly inspect the types
         type_hints = typing.get_type_hints(cls)
         for attr_name, attr_typehint in type_hints.items():
@@ -435,6 +441,8 @@ class SimState:
                         "the tensor with dummy values and track the 'None' case."
                     )
 
+    @classmethod
+    def _assert_all_attributes_have_defined_scope(cls) -> None:
         all_defined_attributes = (
             cls._atom_attributes + cls._system_attributes + cls._global_attributes
         )
@@ -450,28 +458,25 @@ class SimState:
 
         # 2) assert that all attributes are defined in all_defined_attributes
         all_annotations = {}
-        for c in reversed(cls.mro()):
+        for c in cls.mro():
             if hasattr(c, "__annotations__"):
                 all_annotations.update(c.__annotations__)
 
         attributes_to_check = set(vars(cls).keys()) | set(all_annotations.keys())
 
         for attr_name in attributes_to_check:
-            if (
-                attr_name.startswith("__")
-                or (hasattr(cls, attr_name) and callable(getattr(cls, attr_name)))
-                or (
-                    attr_name in vars(cls)
-                    and isinstance(vars(cls).get(attr_name), property)
-                )
-            ):
-                continue
-
-            if attr_name in [
+            is_special_attribute = attr_name.startswith("__")
+            is_property = attr_name in vars(cls) and isinstance(
+                vars(cls).get(attr_name), property
+            )
+            is_method = hasattr(cls, attr_name) and callable(getattr(cls, attr_name))
+            is_scope_list = attr_name in [
                 "_atom_attributes",
                 "_system_attributes",
                 "_global_attributes",
-            ]:
+            ]
+
+            if is_special_attribute or is_property or is_method or is_scope_list:
                 continue
 
             if attr_name not in all_defined_attributes:
@@ -479,7 +484,6 @@ class SimState:
                     f"Attribute '{attr_name}' is not defined in {cls.__name__} in any "
                     "of _atom_attributes, _system_attributes, or _global_attributes"
                 )
-        super().__init_subclass__(**kwargs)
 
 
 class DeformGradMixin:
