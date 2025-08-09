@@ -204,7 +204,7 @@ class SimState:
         return self.n_atoms_per_system
 
     @property
-    def batch(self) -> torch.Tensor | None:
+    def batch(self) -> torch.Tensor:
         """System indices.
 
         deprecated::

@@ -194,10 +194,6 @@ class MaceModel(ModelInterface):
 
             self.setup_from_system_idx(atomic_numbers, system_idx)
 
-    @property
-    def device(self) -> torch.device:
-        return self._device
-
     def setup_from_system_idx(
         self, atomic_numbers: torch.Tensor, system_idx: torch.Tensor
     ) -> None:

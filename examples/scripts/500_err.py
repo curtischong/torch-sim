@@ -25,8 +25,6 @@ compound_init = [
     for _ in range(500)
 ]
 
-# --- Placeholder definitions ---
-# Please replace these with your actual model and device configuration
 device = "cuda" if torch.cuda.is_available() else "cpu"
 dtype = torch.float32
 
@@ -37,35 +35,14 @@ mace_model = mace_mp(
     default_dtype=dtype,
 )
 
-# Option 2: Load the compiled model from the local file
-# MODEL_PATH = "../../../checkpoints/MACE/mace-mpa-0-medium.model"
-# loaded_model = torch.load(MODEL_PATH, map_location=device)
-
 batched_model = MaceModel(
-    # Pass the raw model
     model=mace_model,
-    # Or load from compiled model
-    # model=compiled_model,
     device=device,
     compute_forces=True,
     compute_stress=True,
     dtype=dtype,
     enable_cueq=False,
 )
-
-
-# state = ts.initialize_state(compound_init, device=device, dtype=torch.float64)
-
-# convergence_fn = ts.generate_force_convergence_fn(0.025)
-# relaxed_state = ts.optimize(
-#     system=state,
-#     model=batched_model,
-#     optimizer=ts.frechet_cell_fire,
-#     max_steps=1000,
-#     convergence_fn=convergence_fn,
-# )
-# print("Optimization finished.")
-# print(relaxed_state)
 
 
 state = ts.initialize_state(compound_init, device=device, dtype=dtype)
@@ -88,6 +65,6 @@ relaxed_state = ts.optimize(
     model=batched_model,
     optimizer=ts.frechet_cell_fire,
     autobatcher=batcher,
-    max_steps=1000,
+    max_steps=10,
     convergence_fn=convergence_fn,
 )
