@@ -209,7 +209,6 @@ class UnitCellGDState(GDState, DeformGradMixin):
     """
 
     # Required attributes not in BatchedGDState
-    reference_cell: torch.Tensor
     cell_factor: torch.Tensor
     hydrostatic_strain: bool
     constant_volume: bool
@@ -233,7 +232,6 @@ class UnitCellGDState(GDState, DeformGradMixin):
     )
     _global_attributes = (
         *GDState._global_attributes,  # noqa: SLF001
-        "reference_cell",
         "hydrostatic_strain",
         "constant_volume",
     )
@@ -728,7 +726,6 @@ class UnitCellFireState(SimState, DeformGradMixin):
     cell_masses: torch.Tensor
 
     # Optimization-specific attributes
-    reference_cell: torch.Tensor
     cell_factor: torch.Tensor
     pressure: torch.Tensor
     hydrostatic_strain: bool
@@ -1014,7 +1011,6 @@ class FrechetCellFIREState(SimState, DeformGradMixin):
     stress: torch.Tensor
 
     # Optimization-specific attributes
-    reference_cell: torch.Tensor
     cell_factor: torch.Tensor
     pressure: torch.Tensor
     hydrostatic_strain: bool
