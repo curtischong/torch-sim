@@ -480,7 +480,7 @@ def unit_cell_gradient_descent(  # noqa: PLR0915, C901
     return gd_init, gd_step
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FireState(SimState):
     """State information for batched FIRE optimization.
 
@@ -957,7 +957,7 @@ def unit_cell_fire(
     return fire_init, functools.partial(step_func, **step_func_kwargs)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FrechetCellFIREState(SimState, DeformGradMixin):
     """State class for batched FIRE optimization with Frechet cell derivatives.
 
