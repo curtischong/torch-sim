@@ -22,7 +22,7 @@ compound_init = [
     composition_to_random_structure(
         Composition(f"Zn{np.random.randint(2, 5)}"), scale_volume=scale_volume
     )
-    for _ in range(5000)
+    for _ in range(500)
 ]
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
