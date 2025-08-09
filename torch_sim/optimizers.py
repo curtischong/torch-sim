@@ -43,7 +43,6 @@ _fire_system_attributes = (
     "cell_velocities",
     "cell_forces",
     "cell_masses",
-    "reference_cell",
     "cell_factor",
     "pressure",
     "dt",
