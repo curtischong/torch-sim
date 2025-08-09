@@ -486,6 +486,7 @@ class SimState:
                 )
 
 
+@dataclass
 class DeformGradMixin:
     """Mixin for states that support deformation gradients."""
 
