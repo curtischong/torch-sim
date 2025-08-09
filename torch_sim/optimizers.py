@@ -36,6 +36,7 @@ vv_fire_key, ase_fire_key = get_args(MdFlavor)
 md_atom_attributes = (*SimState._atom_attributes, "forces", "velocities")  # noqa: SLF001
 _fire_system_attributes = (
     *SimState._system_attributes,  # noqa: SLF001
+    *DeformGradMixin._system_attributes,  # noqa: SLF001
     "energy",
     "stress",
     "cell_positions",
@@ -222,6 +223,7 @@ class UnitCellGDState(GDState, DeformGradMixin):
 
     _system_attributes = (
         *GDState._system_attributes,  # noqa: SLF001
+        *DeformGradMixin._system_attributes,  # noqa: SLF001
         "cell_forces",
         "pressure",
         "stress",

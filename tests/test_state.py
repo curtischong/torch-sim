@@ -518,6 +518,11 @@ def test_column_vector_cell(si_sim_state: ts.SimState) -> None:
 class DeformState(SimState, DeformGradMixin):
     """Test class that combines SimState with DeformGradMixin."""
 
+    _system_attributes = (
+        *SimState._system_attributes,  # noqa: SLF001
+        *DeformGradMixin._system_attributes,  # noqa: SLF001
+    )
+
     def __init__(
         self,
         *args,
