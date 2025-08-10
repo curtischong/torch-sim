@@ -697,15 +697,14 @@ def _split_state(
     system_sizes = torch.bincount(state.system_idx).tolist()
     n_systems = len(system_sizes)
 
-    split_per_atom = {
-        name: torch.split(value, system_sizes)
-        for name, value in get_attrs_for_scope(state, "per-atom")
-        if name != "system_idx"
-    }
-    split_per_system = {
-        name: torch.split(value, 1)
-        for name, value in get_attrs_for_scope(state, "per-system")
-    }
+    split_per_atom = {}
+    for name, value in get_attrs_for_scope(state, "per-atom"):
+        if name != "system_idx":
+            split_per_atom[name] = torch.split(value, system_sizes, dim=0)
+
+    split_per_system = {}
+    for name, value in get_attrs_for_scope(state, "per-system"):
+        split_per_system[name] = torch.split(value, 1, dim=0)
 
     global_attrs = dict(get_attrs_for_scope(state, "global"))
 
