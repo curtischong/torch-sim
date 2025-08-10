@@ -814,7 +814,7 @@ def unit_cell_fire(
 
     def fire_init(
         state: SimState | StateDict,
-        cell_factor: torch.Tensor | None = cell_factor,
+        cell_factor: float | torch.Tensor | None = cell_factor,
         scalar_pressure: float = scalar_pressure,
         dt_start: float = dt_start,
         alpha_start: float = alpha_start,
@@ -1102,7 +1102,7 @@ def frechet_cell_fire(
 
     def fire_init(
         state: SimState | StateDict,
-        cell_factor: torch.Tensor | None = cell_factor,
+        cell_factor: float | torch.Tensor | None = cell_factor,
         scalar_pressure: float = scalar_pressure,
         dt_start: float = dt_start,
         alpha_start: float = alpha_start,
