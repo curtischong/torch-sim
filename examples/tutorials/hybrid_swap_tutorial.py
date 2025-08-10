@@ -105,7 +105,7 @@ class HybridSwapMCState(ts.integrators.MDState):
     """
 
     last_permutation: torch.Tensor
-    _system_attributes = (*MDState._system_attributes, "last_permutation")  # noqa: SLF001
+    _atom_attributes = (*MDState._atom_attributes, "last_permutation")  # noqa: SLF001
 
 
 # %% [markdown]

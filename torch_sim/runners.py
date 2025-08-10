@@ -567,8 +567,12 @@ def static(
         sub_state = StaticState(
             **vars(sub_state),
             energy=model_outputs["energy"],
-            forces=model_outputs["forces"] if model.compute_forces else None,
-            stress=model_outputs["stress"] if model.compute_stress else None,
+            forces=model_outputs["forces"]
+            if model.compute_forces
+            else torch.full_like(sub_state.positions, fill_value=float("nan")),
+            stress=model_outputs["stress"]
+            if model.compute_stress
+            else torch.full_like(sub_state.cell, fill_value=float("nan")),
         )
 
         props = trajectory_reporter.report(sub_state, 0, model=model)

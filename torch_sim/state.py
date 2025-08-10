@@ -622,6 +622,8 @@ def get_attrs_for_scope(
             attr_names = state._system_attributes  # noqa: SLF001
         case "global":
             attr_names = state._global_attributes  # noqa: SLF001
+        case _:
+            raise ValueError(f"Unknown scope: {scope!r}")
     for attr_name in attr_names:
         yield attr_name, getattr(state, attr_name)
 
