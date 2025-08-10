@@ -724,7 +724,6 @@ class UnitCellFireState(SimState, DeformGradMixin):
     cell_velocities: torch.Tensor
     cell_forces: torch.Tensor
     cell_masses: torch.Tensor
-    reference_cell: torch.Tensor
 
     # Optimization-specific attributes
     cell_factor: torch.Tensor
