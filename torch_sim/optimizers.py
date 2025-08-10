@@ -142,7 +142,7 @@ def gradient_descent(
             system_idx=state.system_idx,
         )
 
-    def gd_step(state: GDState, lr: torch.Tensor = lr) -> GDState:
+    def gd_step(state: GDState, lr: float | torch.Tensor = lr) -> GDState:
         """Perform one gradient descent optimization step to update the
         atomic positions. The cell is not optimized.
 
@@ -154,8 +154,7 @@ def gradient_descent(
             Updated GDState after one optimization step
         """
         # Get per-atom learning rates by mapping batch learning rates to atoms
-        if isinstance(lr, float):
-            lr = torch.full((state.n_systems,), lr, device=device, dtype=dtype)
+        lr = _to_per_system(state, lr)
 
         atom_lr = lr[state.system_idx].unsqueeze(-1)  # shape: (total_atoms, 1)
 
@@ -320,11 +319,7 @@ def unit_cell_gradient_descent(  # noqa: PLR0915, C901
             _, counts = torch.unique(state.system_idx, return_counts=True)
             cell_factor = counts.to(dtype=dtype)
 
-        if isinstance(cell_factor, int | float):
-            # Use same factor for all systems
-            cell_factor = torch.full(
-                (state.n_systems,), cell_factor, device=device, dtype=dtype
-            )
+        cell_factor = _to_per_system(state, cell_factor)
 
         # Reshape to (n_systems, 1, 1) for broadcasting
         cell_factor = cell_factor.view(n_systems, 1, 1)
@@ -397,8 +392,8 @@ def unit_cell_gradient_descent(  # noqa: PLR0915, C901
 
     def gd_step(
         state: UnitCellGDState,
-        positions_lr: torch.Tensor = positions_lr,
-        cell_lr: torch.Tensor = cell_lr,
+        positions_lr: float | torch.Tensor = positions_lr,
+        cell_lr: float | torch.Tensor = cell_lr,
     ) -> UnitCellGDState:
         """Perform one gradient descent optimization step with unit cell.
 
@@ -416,13 +411,9 @@ def unit_cell_gradient_descent(  # noqa: PLR0915, C901
         n_systems = state.n_systems
 
         # Get per-atom learning rates by mapping system learning rates to atoms
-        if isinstance(positions_lr, float):
-            positions_lr = torch.full(
-                (state.n_systems,), positions_lr, device=device, dtype=dtype
-            )
+        positions_lr = _to_per_system(state, positions_lr)
 
-        if isinstance(cell_lr, float):
-            cell_lr = torch.full((state.n_systems,), cell_lr, device=device, dtype=dtype)
+        cell_lr = _to_per_system(state, cell_lr)
 
         # Get current deformation gradient
         cur_deform_grad = state.deform_grad()
@@ -853,11 +844,7 @@ def unit_cell_fire(
             _, counts = torch.unique(state.system_idx, return_counts=True)
             cell_factor = counts.to(dtype=dtype)
 
-        if isinstance(cell_factor, int | float):
-            # Use same factor for all systems
-            cell_factor = torch.full(
-                (state.n_systems,), cell_factor, device=device, dtype=dtype
-            )
+        cell_factor = _to_per_system(state, cell_factor)
 
         # Reshape to (n_systems, 1, 1) for broadcasting
         cell_factor = cell_factor.view(n_systems, 1, 1)
@@ -1146,11 +1133,7 @@ def frechet_cell_fire(
             _, counts = torch.unique(state.system_idx, return_counts=True)
             cell_factor = counts.to(dtype=dtype)
 
-        if isinstance(cell_factor, int | float):
-            # Use same factor for all systems
-            cell_factor = torch.full(
-                (state.n_systems,), cell_factor, device=device, dtype=dtype
-            )
+        cell_factor = _to_per_system(state, cell_factor)
 
         # Reshape to (n_systems, 1, 1) for broadcasting
         cell_factor = cell_factor.view(n_systems, 1, 1)
@@ -1735,3 +1718,12 @@ def _ase_fire_step(  # noqa: C901, PLR0915
             state.cell_forces = virial / state.cell_factor
 
     return state
+
+
+def _to_per_system(state: SimState, val: float | torch.Tensor) -> torch.Tensor:
+    """If the value is a float | or int, it returns a [n_systems] tensor where each
+    index has the same val. Otherwise, it returns the value as is.
+    """
+    if isinstance(val, (float, int)):
+        return torch.full((state.n_systems,), val, device=state.device, dtype=state.dtype)
+    return val
