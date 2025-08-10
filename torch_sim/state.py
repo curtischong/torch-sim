@@ -486,7 +486,7 @@ class SimState:
                 )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class DeformGradMixin:
     """Mixin for states that support deformation gradients."""
 
