@@ -697,22 +697,13 @@ def _split_state(
     system_sizes = torch.bincount(state.system_idx).tolist()
     n_systems = len(system_sizes)
 
-    def split_attr(
-        attr_value: torch.Tensor | None, split_sizes: list[int]
-    ) -> list[torch.Tensor | None]:
-        return (
-            [None] * n_systems
-            if attr_value is None
-            else torch.split(attr_value, split_sizes)
-        )
-
     split_per_atom = {
-        name: split_attr(value, system_sizes)
+        name: torch.split(value, system_sizes)
         for name, value in get_attrs_for_scope(state, "per-atom")
         if name != "system_idx"
     }
     split_per_system = {
-        name: split_attr(value, 1)
+        name: torch.split(value, 1)
         for name, value in get_attrs_for_scope(state, "per-system")
     }
 
