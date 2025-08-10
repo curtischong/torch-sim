@@ -491,9 +491,8 @@ class DeformGradMixin:
     """Mixin for states that support deformation gradients."""
 
     reference_cell: torch.Tensor
-    row_vector_cell: torch.Tensor
 
-    _system_attributes = ("reference_cell", "row_vector_cell")
+    _system_attributes = ("reference_cell",)
 
     @property
     def reference_row_vector_cell(self) -> torch.Tensor:
