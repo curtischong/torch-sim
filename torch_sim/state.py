@@ -11,7 +11,7 @@ import warnings
 from collections import defaultdict
 from collections.abc import Generator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast, overload
 
 import torch
 
@@ -609,27 +609,37 @@ def state_to_device(
     return type(state)(**attrs)
 
 
-def get_attrs_for_per_atom_scope(
-    state: SimState,
-) -> Generator[tuple[str, torch.Tensor], None, None]:
-    """Get attributes for the per-atom scope."""
-    for attr_name in state._atom_attributes:  # noqa: SLF001
-        yield attr_name, getattr(state, attr_name)
+@overload
+def get_attrs_for_scope(
+    state: SimState, scope: Literal["per-atom", "per-system"]
+) -> Generator[tuple[str, torch.Tensor], None, None]: ...
 
 
-def get_attrs_for_per_system_scope(
-    state: SimState,
-) -> Generator[tuple[str, torch.Tensor], None, None]:
-    """Get attributes for the per-system scope."""
-    for attr_name in state._system_attributes:  # noqa: SLF001
-        yield attr_name, getattr(state, attr_name)
+@overload
+def get_attrs_for_scope(
+    state: SimState, scope: Literal["global"]
+) -> Generator[tuple[str, Any], None, None]: ...
 
 
-def get_attrs_for_global_scope(
-    state: SimState,
+def get_attrs_for_scope(
+    state: SimState, scope: Literal["per-atom", "per-system", "global"]
 ) -> Generator[tuple[str, Any], None, None]:
-    """Get attributes for the global scope."""
-    for attr_name in state._global_attributes:  # noqa: SLF001
+    """Get attributes for a given scope.
+
+    Args:
+        state (SimState): The state to get attributes for
+        scope (Literal["per-atom", "per-system", "global"]): The scope to get
+            attributes for
+
+    Returns:
+        Generator[tuple[str, Any], None, None]: A generator of attribute names and values
+    """
+    attr_names = {
+        "per-atom": state._atom_attributes,  # noqa: SLF001
+        "per-system": state._system_attributes,  # noqa: SLF001
+        "global": state._global_attributes,  # noqa: SLF001
+    }[scope]
+    for attr_name in attr_names:
         yield attr_name, getattr(state, attr_name)
 
 
@@ -653,10 +663,10 @@ def _filter_attrs_by_mask(
         dict: Filtered attributes with appropriate handling for each scope
     """
     # Copy global attributes directly
-    filtered_attrs = dict(get_attrs_for_global_scope(state))
+    filtered_attrs = dict(get_attrs_for_scope(state, "global"))
 
     # Filter per-atom attributes
-    for attr_name, attr_value in get_attrs_for_per_atom_scope(state):
+    for attr_name, attr_value in get_attrs_for_scope(state, "per-atom"):
         if attr_name == "system_idx":
             # Get the old system indices for the selected atoms
             old_system_idxs = attr_value[atom_mask]
@@ -680,7 +690,7 @@ def _filter_attrs_by_mask(
             filtered_attrs[attr_name] = attr_value[atom_mask]
 
     # Filter per-system attributes
-    for attr_name, attr_value in get_attrs_for_per_system_scope(state):
+    for attr_name, attr_value in get_attrs_for_scope(state, "per-system"):
         filtered_attrs[attr_name] = attr_value[system_mask]
 
     return filtered_attrs
@@ -704,15 +714,15 @@ def _split_state(
     system_sizes: list[int] = torch.bincount(state.system_idx).tolist()
 
     split_per_atom: dict[str, Sequence[torch.Tensor]] = {}
-    for attr_name, attr_value in get_attrs_for_per_atom_scope(state):
+    for attr_name, attr_value in get_attrs_for_scope(state, "per-atom"):
         if attr_name != "system_idx":
             split_per_atom[attr_name] = torch.split(attr_value, system_sizes, dim=0)
 
     split_per_system: dict[str, Sequence[torch.Tensor]] = {}
-    for attr_name, attr_value in get_attrs_for_per_system_scope(state):
+    for attr_name, attr_value in get_attrs_for_scope(state, "per-system"):
         split_per_system[attr_name] = torch.split(attr_value, 1, dim=0)
 
-    global_attrs = dict(get_attrs_for_global_scope(state))
+    global_attrs = dict(get_attrs_for_scope(state, "global"))
 
     # Create a state for each system
     states: list[SimStateVar] = []
@@ -862,7 +872,7 @@ def concatenate_states(
     target_device = device or first_state.device
 
     # Initialize result with global properties from first state
-    concatenated = dict(get_attrs_for_global_scope(first_state))
+    concatenated = dict(get_attrs_for_scope(first_state, "global"))
 
     # Pre-allocate lists for tensors to concatenate
     per_atom_tensors = defaultdict[str, list[torch.Tensor]](list)
@@ -877,14 +887,14 @@ def concatenate_states(
             state = state_to_device(state, target_device)
 
         # Collect per-atom properties
-        for prop, val in get_attrs_for_per_atom_scope(state):
+        for prop, val in get_attrs_for_scope(state, "per-atom"):
             if prop == "system_idx":
                 # skip system_idx, it will be handled below
                 continue
             per_atom_tensors[prop].append(val)
 
         # Collect per-system properties
-        for prop, val in get_attrs_for_per_system_scope(state):
+        for prop, val in get_attrs_for_scope(state, "per-system"):
             per_system_tensors[prop].append(val)
 
         # Update system indices
