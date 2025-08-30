@@ -408,7 +408,7 @@ class SimState:
 
         return _slice_state(self, system_indices)
 
-    def __init_subclass__(cls, **kwargs) -> None:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         """Enforce that all derived states cannot have tensor attributes that can also be
         None. This is because torch.concatenate cannot concat between a tensor and a None.
         See https://github.com/Radical-AI/torch-sim/pull/219 for more details.
@@ -427,7 +427,7 @@ class SimState:
         for attr_name, attr_typehint in type_hints.items():
             origin = typing.get_origin(attr_typehint)
 
-            is_union = origin is typing.Union
+            is_union = origin is typing.Union  # pyright: ignore[reportDeprecated]
             if not is_union and origin is not None:
                 # For Python 3.10+ `|` syntax, origin is types.UnionType
                 # We check by name to be robust against module reloading/patching issues
@@ -568,10 +568,10 @@ def _normalize_system_indices(
     if isinstance(system_indices, slice):
         # Let PyTorch handle the slice conversion with negative indices
         return torch.arange(n_systems, device=device)[system_indices]
-    if isinstance(system_indices, torch.Tensor):
+    if isinstance(system_indices, torch.Tensor):  # pyright: ignore[reportUnnecessaryIsInstance]
         # Handle negative indices in tensors
         return torch.where(system_indices < 0, n_systems + system_indices, system_indices)
-    raise TypeError(f"Unsupported index type: {type(system_indices)}")
+    raise TypeError(f"Unsupported index type: {type(system_indices)}")  # pyright: ignore[reportUnreachable]
 
 
 def state_to_device(
@@ -602,11 +602,10 @@ def state_to_device(
         if isinstance(attr_value, torch.Tensor):
             attrs[attr_name] = attr_value.to(device=device)
 
-    if dtype is not None:
-        attrs["positions"] = attrs["positions"].to(dtype=dtype)
-        attrs["masses"] = attrs["masses"].to(dtype=dtype)
-        attrs["cell"] = attrs["cell"].to(dtype=dtype)
-        attrs["atomic_numbers"] = attrs["atomic_numbers"].to(dtype=torch.int)
+    attrs["positions"] = attrs["positions"].to(dtype=dtype)
+    attrs["masses"] = attrs["masses"].to(dtype=dtype)
+    attrs["cell"] = attrs["cell"].to(dtype=dtype)
+    attrs["atomic_numbers"] = attrs["atomic_numbers"].to(dtype=torch.int)
     return type(state)(**attrs)
 
 
@@ -623,15 +622,11 @@ def get_attrs_for_scope(
     Returns:
         Generator[tuple[str, Any], None, None]: A generator of attribute names and values
     """
-    match scope:
-        case "per-atom":
-            attr_names = state._atom_attributes  # noqa: SLF001
-        case "per-system":
-            attr_names = state._system_attributes  # noqa: SLF001
-        case "global":
-            attr_names = state._global_attributes  # noqa: SLF001
-        case _:
-            raise ValueError(f"Unknown scope: {scope!r}")
+    attr_names = {
+        "per-atom": state._atom_attributes,  # noqa: SLF001
+        "per-system": state._system_attributes,  # noqa: SLF001
+        "global": state._global_attributes,  # noqa: SLF001
+    }[scope]
     for attr_name in attr_names:
         yield attr_name, getattr(state, attr_name)
 
@@ -640,7 +635,7 @@ def _filter_attrs_by_mask(
     state: SimState,
     atom_mask: torch.Tensor,
     system_mask: torch.Tensor,
-) -> dict:
+) -> dict[str, Any]:
     """Filter attributes by atom and system masks.
 
     Selects subsets of attributes based on boolean masks for atoms and systems.
@@ -868,9 +863,9 @@ def concatenate_states(
     concatenated = dict(get_attrs_for_scope(first_state, "global"))
 
     # Pre-allocate lists for tensors to concatenate
-    per_atom_tensors = defaultdict(list)
-    per_system_tensors = defaultdict(list)
-    new_system_indices = []
+    per_atom_tensors = defaultdict[str, list[Any]](list)
+    per_system_tensors = defaultdict[str, list[Any]](list)
+    new_system_indices: list[torch.Tensor] = []
     system_offset = 0
 
     # Process all states in a single pass

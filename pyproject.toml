@@ -155,3 +155,12 @@ conflicts = [
 
 [tool.basedpyright]
 reportImplicitStringConcatenation = "none"
+reportPrivateUsage = "none" # since ruff will catch this
+reportAny= "none"
+reportExplicitAny= "none"
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
+reportMissingTypeStubs = "none"
+reportPrivateLocalImportUsage = "none"
+reportUnknownParameterType = "none"
