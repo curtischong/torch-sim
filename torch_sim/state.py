@@ -943,7 +943,7 @@ def initialize_state(
                 "all states must have n_systems == 1. To fix this, you can split the "
                 "states into individual states with the split_state function."
             )
-        return concatenate_states(system)  # pyright: ignore[reportArgumentType]
+        return concatenate_states(system)
 
     converters = [
         ("pymatgen.core", "Structure", ts.io.structures_to_state),
@@ -960,7 +960,7 @@ def initialize_state(
             if isinstance(system, cls) or (
                 isinstance(system, list) and all(isinstance(s, cls) for s in system)
             ):
-                return converter_func(system, device, dtype)  # pyright: ignore[reportArgumentType]
+                return converter_func(system, device, dtype)
         except ImportError:
             continue
 

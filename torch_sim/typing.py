@@ -1,7 +1,7 @@
 """Types used across torch-sim."""
 
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import torch
 
@@ -44,9 +44,9 @@ StateLike = (
     Atoms
     | Structure
     | PhonopyAtoms
-    | list["Atoms"]
-    | list["Structure"]
-    | list["PhonopyAtoms"]
+    | list[Atoms]
+    | list[Structure]
+    | list[PhonopyAtoms]
     | SimState
     | list[SimState]
     # | SimStateVar
