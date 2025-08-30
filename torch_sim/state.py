@@ -9,9 +9,9 @@ import importlib
 import typing
 import warnings
 from collections import defaultdict
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
 
 import torch
 
@@ -609,25 +609,27 @@ def state_to_device(
     return type(state)(**attrs)
 
 
-def get_attrs_for_scope(
-    state: SimState, scope: Literal["per-atom", "per-system", "global"]
+def get_attrs_for_per_atom_scope(
+    state: SimState,
+) -> Generator[tuple[str, torch.Tensor], None, None]:
+    """Get attributes for the per-atom scope."""
+    for attr_name in state._atom_attributes:  # noqa: SLF001
+        yield attr_name, getattr(state, attr_name)
+
+
+def get_attrs_for_per_system_scope(
+    state: SimState,
+) -> Generator[tuple[str, torch.Tensor], None, None]:
+    """Get attributes for the per-system scope."""
+    for attr_name in state._system_attributes:  # noqa: SLF001
+        yield attr_name, getattr(state, attr_name)
+
+
+def get_attrs_for_global_scope(
+    state: SimState,
 ) -> Generator[tuple[str, Any], None, None]:
-    """Get attributes for a given scope.
-
-    Args:
-        state (SimState): The state to get attributes for
-        scope (Literal["per-atom", "per-system", "global"]): The scope to get
-            attributes for
-
-    Returns:
-        Generator[tuple[str, Any], None, None]: A generator of attribute names and values
-    """
-    attr_names = {
-        "per-atom": state._atom_attributes,  # noqa: SLF001
-        "per-system": state._system_attributes,  # noqa: SLF001
-        "global": state._global_attributes,  # noqa: SLF001
-    }[scope]
-    for attr_name in attr_names:
+    """Get attributes for the global scope."""
+    for attr_name in state._global_attributes:  # noqa: SLF001
         yield attr_name, getattr(state, attr_name)
 
 
@@ -651,18 +653,18 @@ def _filter_attrs_by_mask(
         dict: Filtered attributes with appropriate handling for each scope
     """
     # Copy global attributes directly
-    filtered_attrs = dict(get_attrs_for_scope(state, "global"))
+    filtered_attrs = dict(get_attrs_for_global_scope(state))
 
     # Filter per-atom attributes
-    for attr_name, attr_value in get_attrs_for_scope(state, "per-atom"):
+    for attr_name, attr_value in get_attrs_for_per_atom_scope(state):
         if attr_name == "system_idx":
             # Get the old system indices for the selected atoms
             old_system_idxs = attr_value[atom_mask]
 
             # Get the system indices that are kept
-            kept_indices = torch.arange(attr_value.max() + 1, device=attr_value.device)[
-                system_mask
-            ]
+            kept_indices = torch.arange(
+                (attr_value.max() + 1).item(), device=attr_value.device
+            )[system_mask]
 
             # Create a mapping from old system indices to new consecutive indices
             system_idx_map = {idx.item(): i for i, idx in enumerate(kept_indices)}
@@ -678,7 +680,7 @@ def _filter_attrs_by_mask(
             filtered_attrs[attr_name] = attr_value[atom_mask]
 
     # Filter per-system attributes
-    for attr_name, attr_value in get_attrs_for_scope(state, "per-system"):
+    for attr_name, attr_value in get_attrs_for_per_system_scope(state):
         filtered_attrs[attr_name] = attr_value[system_mask]
 
     return filtered_attrs
@@ -699,21 +701,21 @@ def _split_state(
         list[SimState]: A list of SimState objects, each containing a single
             system
     """
-    system_sizes = torch.bincount(state.system_idx).tolist()
+    system_sizes: list[int] = torch.bincount(state.system_idx).tolist()
 
-    split_per_atom = {}
-    for attr_name, attr_value in get_attrs_for_scope(state, "per-atom"):
+    split_per_atom: dict[str, Sequence[torch.Tensor]] = {}
+    for attr_name, attr_value in get_attrs_for_per_atom_scope(state):
         if attr_name != "system_idx":
             split_per_atom[attr_name] = torch.split(attr_value, system_sizes, dim=0)
 
-    split_per_system = {}
-    for attr_name, attr_value in get_attrs_for_scope(state, "per-system"):
+    split_per_system: dict[str, Sequence[torch.Tensor]] = {}
+    for attr_name, attr_value in get_attrs_for_per_system_scope(state):
         split_per_system[attr_name] = torch.split(attr_value, 1, dim=0)
 
-    global_attrs = dict(get_attrs_for_scope(state, "global"))
+    global_attrs = dict(get_attrs_for_global_scope(state))
 
     # Create a state for each system
-    states = []
+    states: list[SimStateVar] = []
     n_systems = len(system_sizes)
     for i in range(n_systems):
         system_attrs = {
@@ -731,7 +733,7 @@ def _split_state(
             # Add the global attributes
             **global_attrs,
         }
-        states.append(type(state)(**system_attrs))
+        states.append(type(state)(**system_attrs))  # pyright: ignore[reportArgumentType]
 
     return states
 
@@ -860,11 +862,11 @@ def concatenate_states(
     target_device = device or first_state.device
 
     # Initialize result with global properties from first state
-    concatenated = dict(get_attrs_for_scope(first_state, "global"))
+    concatenated = dict(get_attrs_for_global_scope(first_state))
 
     # Pre-allocate lists for tensors to concatenate
-    per_atom_tensors = defaultdict[str, list[Any]](list)
-    per_system_tensors = defaultdict[str, list[Any]](list)
+    per_atom_tensors = defaultdict[str, list[torch.Tensor]](list)
+    per_system_tensors = defaultdict[str, list[torch.Tensor]](list)
     new_system_indices: list[torch.Tensor] = []
     system_offset = 0
 
@@ -875,14 +877,14 @@ def concatenate_states(
             state = state_to_device(state, target_device)
 
         # Collect per-atom properties
-        for prop, val in get_attrs_for_scope(state, "per-atom"):
+        for prop, val in get_attrs_for_per_atom_scope(state):
             if prop == "system_idx":
                 # skip system_idx, it will be handled below
                 continue
             per_atom_tensors[prop].append(val)
 
         # Collect per-system properties
-        for prop, val in get_attrs_for_scope(state, "per-system"):
+        for prop, val in get_attrs_for_per_system_scope(state):
             per_system_tensors[prop].append(val)
 
         # Update system indices
@@ -935,13 +937,13 @@ def initialize_state(
         return state_to_device(system, device, dtype)
 
     if isinstance(system, list) and all(isinstance(s, SimState) for s in system):
-        if not all(cast("SimState", state).n_systems == 1 for state in system):
+        if not all(state.n_systems == 1 for state in system):  # pyright: ignore[reportAttributeAccessIssue]
             raise ValueError(
                 "When providing a list of states, to the initialize_state function, "
                 "all states must have n_systems == 1. To fix this, you can split the "
                 "states into individual states with the split_state function."
             )
-        return concatenate_states(system)
+        return concatenate_states(system)  # pyright: ignore[reportArgumentType]
 
     converters = [
         ("pymatgen.core", "Structure", ts.io.structures_to_state),
@@ -958,7 +960,7 @@ def initialize_state(
             if isinstance(system, cls) or (
                 isinstance(system, list) and all(isinstance(s, cls) for s in system)
             ):
-                return converter_func(system, device, dtype)
+                return converter_func(system, device, dtype)  # pyright: ignore[reportArgumentType]
         except ImportError:
             continue
 
