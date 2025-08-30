@@ -163,6 +163,6 @@ exclude = [".venv"]
 reportUnknownMemberType = "none"
 reportUnknownVariableType = "none"
 reportUnknownArgumentType = "none"
-# reportMissingTypeStubs = "none"
+reportMissingTypeStubs = "none"
 # reportPrivateLocalImportUsage = "none"
 # reportUnknownParameterType = "none"
