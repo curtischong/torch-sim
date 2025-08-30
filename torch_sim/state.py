@@ -672,9 +672,9 @@ def _filter_attrs_by_mask(
             old_system_idxs = attr_value[atom_mask]
 
             # Get the system indices that are kept
-            kept_indices = torch.arange(
-                (attr_value.max() + 1).item(), device=attr_value.device
-            )[system_mask]
+            kept_indices = torch.arange(attr_value.max() + 1, device=attr_value.device)[
+                system_mask
+            ]
 
             # Create a mapping from old system indices to new consecutive indices
             system_idx_map = {idx.item(): i for i, idx in enumerate(kept_indices)}
