@@ -151,3 +151,7 @@ conflicts = [
         { extra = "sevenn" },
     ],
 ]
+
+
+[tool.basedpyright]
+reportImplicitStringConcatenation = "none"

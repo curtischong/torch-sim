@@ -1,7 +1,7 @@
 """Types used across torch-sim."""
 
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, TypeVar, Union
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import torch
 
@@ -40,13 +40,11 @@ class BravaisType(Enum):
     TRICLINIC = "triclinic"
 
 
-StateLike = Union[
-    "Atoms",
-    "Structure",
-    "PhonopyAtoms",
-    list["Atoms"],
-    list["Structure"],
-    list["PhonopyAtoms"],
-    SimStateVar,
-    list[SimStateVar],
-]
+StateLike = (
+    Literal["Atoms", "Structure", "PhonopyAtoms"]
+    | list["Atoms"]
+    | list["Structure"]
+    | list["PhonopyAtoms"]
+    | SimStateVar
+    | list[SimStateVar]
+)
