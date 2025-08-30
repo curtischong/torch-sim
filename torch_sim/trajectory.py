@@ -91,6 +91,9 @@ class TrajectoryReporter:
         >>> reporter.close()
     """
 
+    filenames: list[pathlib.Path] | None
+    trajectories: list["TorchSimTrajectory"]
+
     def __init__(
         self,
         filenames: str | pathlib.Path | list[str | pathlib.Path] | None,
