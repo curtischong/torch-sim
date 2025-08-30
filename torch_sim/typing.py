@@ -49,6 +49,4 @@ StateLike = (
     | list[PhonopyAtoms]
     | SimState
     | list[SimState]
-    # | SimStateVar
-    # | list[SimStateVar]
 )
