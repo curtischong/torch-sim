@@ -19,7 +19,7 @@ scale_volume = 1.0
 # Generate 200 random structures
 compound_init = [
     composition_to_random_structure(
-        Composition(f"Zn{np.random.randint(2, 5)}"), scale_volume=scale_volume
+        Composition(f"Zn{np.random.randint(1, 5)}"), scale_volume=scale_volume
     )
     for _ in range(200)
 ]
