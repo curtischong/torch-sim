@@ -878,3 +878,30 @@ def test_fire_fixed_cell_unit_cell_consistency(  # noqa: C901
             f"Energy for system {step} doesn't match position only optimization: "
             f"system={energy_unit_cell}, individual={individual_energies_fire[step]}"
         )
+
+
+def test_move_atoms_along_axes2(
+    ar_supercell_sim_state: ts.SimState, lj_model: ModelInterface
+) -> None:
+    original_positions = ar_supercell_sim_state.positions.clone()
+
+    final_states = ts.optimize(
+        system=ar_supercell_sim_state,
+        model=lj_model,
+        optimizer=ts.optimizers.frechet_cell_fire,
+        constant_volume=True,
+        hydrostatic_strain=True,
+        max_steps=50,
+        convergence_fn=ts.generate_force_convergence_fn(force_tol=1e-1),
+        autobatcher=ts.InFlightAutoBatcher(
+            model=lj_model,
+            max_memory_scaler=1.0,
+            memory_scales_with="n_atoms",
+        ),
+        optimizer_kwargs={"move_atoms_along_axes": (True, False, False)},
+    )
+
+    # assert that only the y coordinates have changed
+    assert not torch.allclose(final_states.positions[:, 0], original_positions[:, 0])
+    assert torch.allclose(final_states.positions[:, 1], original_positions[:, 1])
+    assert torch.allclose(final_states.positions[:, 2], original_positions[:, 2])
