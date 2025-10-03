@@ -1285,9 +1285,9 @@ def _vv_fire_step(  # noqa: C901, PLR0915
     alpha_start: torch.Tensor,
     f_alpha: torch.Tensor,
     eps: float,
-    fix_cartesian_mask: torch.Tensor,
     is_cell_optimization: bool = False,
     is_frechet: bool = False,
+    fix_cartesian_mask: torch.Tensor = torch.tensor([1, 1, 1]),
 ) -> FireState | AnyFireCellState:
     """Perform one Velocity-Verlet based FIRE optimization step.
 
@@ -1306,9 +1306,9 @@ def _vv_fire_step(  # noqa: C901, PLR0915
         alpha_start: Initial mixing parameter for velocity update.
         f_alpha: Factor for mixing parameter decrease.
         eps: Small epsilon value for numerical stability.
-        fix_cartesian_mask: Whether to move the atoms along the axes of the state.
         is_cell_optimization: Flag indicating if cell optimization is active.
         is_frechet: Flag indicating if Frechet cell parameterization is used.
+        fix_cartesian_mask: Whether to move the atoms along the axes of the state.
 
     Returns:
         Updated state after performing one VV-FIRE step.
@@ -1509,9 +1509,9 @@ def _ase_fire_step(  # noqa: C901, PLR0915
     f_alpha: torch.Tensor,
     max_step: torch.Tensor,
     eps: float,
-    fix_cartesian_mask: torch.Tensor,
     is_cell_optimization: bool = False,
     is_frechet: bool = False,
+    fix_cartesian_mask: torch.Tensor = torch.tensor([1, 1, 1]),
 ) -> FireState | AnyFireCellState:
     """Perform one ASE-style FIRE optimization step.
 
@@ -1530,9 +1530,9 @@ def _ase_fire_step(  # noqa: C901, PLR0915
         f_alpha: Factor for mixing parameter decrease.
         max_step: Maximum allowed step size.
         eps: Small epsilon value for numerical stability.
-        fix_cartesian_mask: Whether to move the atoms along the axes of the state.
         is_cell_optimization: Flag indicating if cell optimization is active.
         is_frechet: Flag indicating if Frechet cell parameterization is used.
+        fix_cartesian_mask: Whether to move the atoms along the axes of the state.
 
     Returns:
         Updated state after performing one ASE-FIRE step.
