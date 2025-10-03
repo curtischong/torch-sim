@@ -880,8 +880,9 @@ def test_fire_fixed_cell_unit_cell_consistency(  # noqa: C901
         )
 
 
+@pytest.mark.parametrize("md_flavor", ["vv_fire", "ase_fire"])
 def test_move_atoms_along_axes2(
-    ar_supercell_sim_state: ts.SimState, lj_model: ModelInterface
+    ar_supercell_sim_state: ts.SimState, lj_model: ModelInterface, md_flavor: MdFlavor
 ) -> None:
     perturbed_positions = (
         ar_supercell_sim_state.positions.clone()
@@ -903,6 +904,7 @@ def test_move_atoms_along_axes2(
             memory_scales_with="n_atoms",
         ),
         move_atoms_along_axes=(True, False, False),
+        md_flavor=md_flavor,
     )
 
     print(perturbed_positions[:, 1].tolist())

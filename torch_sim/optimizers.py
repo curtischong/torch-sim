@@ -1337,15 +1337,10 @@ def _vv_fire_step(  # noqa: C901, PLR0915
         (n_systems,), alpha_start.item(), device=device, dtype=dtype
     )
 
+    state.forces = _move_atoms_along_axes(state.forces, move_atoms_along_axes)
+
     atom_wise_dt = state.dt[state.system_idx].unsqueeze(-1)
     state.velocities += 0.5 * atom_wise_dt * state.forces / state.masses.unsqueeze(-1)
-
-    if not move_atoms_along_axes[0]:
-        state.velocities[:, 0] = 0.0
-    if not move_atoms_along_axes[1]:
-        state.velocities[:, 1] = 0.0
-    if not move_atoms_along_axes[2]:
-        state.velocities[:, 2] = 0.0
 
     if is_cell_optimization:
         cell_wise_dt = state.dt.unsqueeze(-1).unsqueeze(-1)
@@ -1398,6 +1393,7 @@ def _vv_fire_step(  # noqa: C901, PLR0915
     results = model(state)
     state.forces = results["forces"]
     state.energy = results["energy"]
+    state.forces = _move_atoms_along_axes(state.forces, move_atoms_along_axes)
 
     if is_cell_optimization:
         state.stress = results["stress"]
@@ -1546,7 +1542,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
 
     cur_deform_grad = None  # Initialize cur_deform_grad to prevent UnboundLocalError
 
-    state = _move_atoms_along_axes(state, move_atoms_along_axes)
+    state.forces = _move_atoms_along_axes(state.forces, move_atoms_along_axes)
     nan_velocities = state.velocities.isnan().any(dim=1)
     if nan_velocities.any():
         state.velocities[nan_velocities] = torch.zeros_like(
@@ -1691,7 +1687,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
     results = model(state)
     state.forces = results["forces"]
     state.energy = results["energy"]
-    state = _move_atoms_along_axes(state, move_atoms_along_axes)
+    state.forces = _move_atoms_along_axes(state.forces, move_atoms_along_axes)
 
     if is_cell_optimization:
         state.stress = results["stress"]
@@ -1759,13 +1755,13 @@ def _ase_fire_step(  # noqa: C901, PLR0915
 
 
 def _move_atoms_along_axes(
-    state: FireState | AnyFireCellState,
+    forces: torch.Tensor,
     move_atoms_along_axes: tuple[bool, bool, bool],
 ) -> SimState:
     if not move_atoms_along_axes[0]:
-        state.forces[:, 0] = 0.0
+        forces[:, 0] = 0.0
     if not move_atoms_along_axes[1]:
-        state.forces[:, 1] = 0.0
+        forces[:, 1] = 0.0
     if not move_atoms_along_axes[2]:
-        state.forces[:, 2] = 0.0
-    return state
+        forces[:, 2] = 0.0
+    return forces
