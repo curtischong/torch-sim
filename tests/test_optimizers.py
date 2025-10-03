@@ -883,7 +883,11 @@ def test_fire_fixed_cell_unit_cell_consistency(  # noqa: C901
 def test_move_atoms_along_axes2(
     ar_supercell_sim_state: ts.SimState, lj_model: ModelInterface
 ) -> None:
-    original_positions = ar_supercell_sim_state.positions.clone()
+    perturbed_positions = (
+        ar_supercell_sim_state.positions.clone()
+        + torch.randn_like(ar_supercell_sim_state.positions) * 0.1
+    )
+    ar_supercell_sim_state.positions = perturbed_positions
 
     final_states = ts.optimize(
         system=ar_supercell_sim_state,
@@ -895,13 +899,17 @@ def test_move_atoms_along_axes2(
         convergence_fn=ts.generate_force_convergence_fn(force_tol=1e-1),
         autobatcher=ts.InFlightAutoBatcher(
             model=lj_model,
-            max_memory_scaler=1.0,
+            max_memory_scaler=32.0,
             memory_scales_with="n_atoms",
         ),
-        optimizer_kwargs={"move_atoms_along_axes": (True, False, False)},
+        move_atoms_along_axes=(True, False, False),
     )
 
-    # assert that only the y coordinates have changed
-    assert not torch.allclose(final_states.positions[:, 0], original_positions[:, 0])
-    assert torch.allclose(final_states.positions[:, 1], original_positions[:, 1])
-    assert torch.allclose(final_states.positions[:, 2], original_positions[:, 2])
+    print(perturbed_positions[:, 1].tolist())
+    print(final_states.positions[:, 1].tolist())
+
+    # assert that the x coordinates have changed
+    assert not torch.allclose(final_states.positions[:, 0], perturbed_positions[:, 0])
+    # assert that other axes have not changed
+    assert torch.allclose(final_states.positions[:, 1], perturbed_positions[:, 1])
+    assert torch.allclose(final_states.positions[:, 2], perturbed_positions[:, 2])

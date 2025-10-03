@@ -1513,6 +1513,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
     f_alpha: torch.Tensor,
     max_step: torch.Tensor,
     eps: float,
+    move_atoms_along_axes: tuple[bool, bool, bool],
     is_cell_optimization: bool = False,
     is_frechet: bool = False,
 ) -> FireState | AnyFireCellState:
@@ -1533,6 +1534,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
         f_alpha: Factor for mixing parameter decrease.
         max_step: Maximum allowed step size.
         eps: Small epsilon value for numerical stability.
+        move_atoms_along_axes: Whether to move the atoms along the axes of the state.
         is_cell_optimization: Flag indicating if cell optimization is active.
         is_frechet: Flag indicating if Frechet cell parameterization is used.
 
@@ -1544,6 +1546,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
 
     cur_deform_grad = None  # Initialize cur_deform_grad to prevent UnboundLocalError
 
+    state = _move_atoms_along_axes(state, move_atoms_along_axes)
     nan_velocities = state.velocities.isnan().any(dim=1)
     if nan_velocities.any():
         state.velocities[nan_velocities] = torch.zeros_like(
@@ -1688,6 +1691,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
     results = model(state)
     state.forces = results["forces"]
     state.energy = results["energy"]
+    state = _move_atoms_along_axes(state, move_atoms_along_axes)
 
     if is_cell_optimization:
         state.stress = results["stress"]
@@ -1751,4 +1755,17 @@ def _ase_fire_step(  # noqa: C901, PLR0915
                 raise ValueError(f"{type(state)=} must be a {expected_cls.__name__}")
             state.cell_forces = virial / state.cell_factor
 
+    return state
+
+
+def _move_atoms_along_axes(
+    state: FireState | AnyFireCellState,
+    move_atoms_along_axes: tuple[bool, bool, bool],
+) -> SimState:
+    if not move_atoms_along_axes[0]:
+        state.forces[:, 0] = 0.0
+    if not move_atoms_along_axes[1]:
+        state.forces[:, 1] = 0.0
+    if not move_atoms_along_axes[2]:
+        state.forces[:, 2] = 0.0
     return state
