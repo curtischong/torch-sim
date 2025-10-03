@@ -881,7 +881,7 @@ def test_fire_fixed_cell_unit_cell_consistency(  # noqa: C901
 
 
 @pytest.mark.parametrize("md_flavor", ["vv_fire", "ase_fire"])
-def test_move_atoms_along_axes2(
+def test_fix_cartesian(
     ar_supercell_sim_state: ts.SimState, lj_model: ModelInterface, md_flavor: MdFlavor
 ) -> None:
     perturbed_positions = (
@@ -903,7 +903,7 @@ def test_move_atoms_along_axes2(
             max_memory_scaler=32.0,
             memory_scales_with="n_atoms",
         ),
-        move_atoms_along_axes=(True, False, False),
+        fix_cartesian_mask=torch.tensor([1, 0, 0]),
         md_flavor=md_flavor,
     )
 
