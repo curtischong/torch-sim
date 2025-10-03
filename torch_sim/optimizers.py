@@ -1057,6 +1057,7 @@ def frechet_cell_fire(
     scalar_pressure: float = 0.0,
     max_step: float = 0.2,
     md_flavor: MdFlavor = ase_fire_key,
+    move_atoms_along_axes: tuple[bool, bool, bool] = (True, True, True),
 ) -> tuple[
     Callable[[SimState | StateDict], FrechetCellFIREState],
     Callable[[FrechetCellFIREState], FrechetCellFIREState],
@@ -1086,7 +1087,7 @@ def frechet_cell_fire(
         scalar_pressure (float): Applied external pressure in GPa
         max_step (float): Maximum allowed step size for ase_fire
         md_flavor ("vv_fire" | "ase_fire"): Optimization flavor. Default is "ase_fire".
-
+        move_atoms_along_axes (tuple[bool, bool, bool]): Whether to move the atoms along the axes of the state.
     Returns:
         tuple: A pair of functions:
             - Initialization function that creates a FrechetCellFIREState
@@ -1262,6 +1263,7 @@ def frechet_cell_fire(
         eps=eps,
         is_cell_optimization=True,
         is_frechet=True,
+        move_atoms_along_axes=move_atoms_along_axes,
     )
     if md_flavor == ase_fire_key:
         step_func_kwargs["max_step"] = max_step
@@ -1283,6 +1285,7 @@ def _vv_fire_step(  # noqa: C901, PLR0915
     alpha_start: torch.Tensor,
     f_alpha: torch.Tensor,
     eps: float,
+    move_atoms_along_axes: tuple[bool, bool, bool],
     is_cell_optimization: bool = False,
     is_frechet: bool = False,
 ) -> FireState | AnyFireCellState:
@@ -1303,6 +1306,7 @@ def _vv_fire_step(  # noqa: C901, PLR0915
         alpha_start: Initial mixing parameter for velocity update.
         f_alpha: Factor for mixing parameter decrease.
         eps: Small epsilon value for numerical stability.
+        move_atoms_along_axes: Whether to move the atoms along the axes of the state.
         is_cell_optimization: Flag indicating if cell optimization is active.
         is_frechet: Flag indicating if Frechet cell parameterization is used.
 
@@ -1335,6 +1339,13 @@ def _vv_fire_step(  # noqa: C901, PLR0915
 
     atom_wise_dt = state.dt[state.system_idx].unsqueeze(-1)
     state.velocities += 0.5 * atom_wise_dt * state.forces / state.masses.unsqueeze(-1)
+
+    if not move_atoms_along_axes[0]:
+        state.velocities[:, 0] = 0.0
+    if not move_atoms_along_axes[1]:
+        state.velocities[:, 1] = 0.0
+    if not move_atoms_along_axes[2]:
+        state.velocities[:, 2] = 0.0
 
     if is_cell_optimization:
         cell_wise_dt = state.dt.unsqueeze(-1).unsqueeze(-1)
