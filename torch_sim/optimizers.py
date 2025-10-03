@@ -1057,6 +1057,7 @@ def frechet_cell_fire(
     scalar_pressure: float = 0.0,
     max_step: float = 0.2,
     md_flavor: MdFlavor = ase_fire_key,
+    fix_cartesian_mask: torch.Tensor = torch.tensor([1, 1, 1]),
 ) -> tuple[
     Callable[[SimState | StateDict], FrechetCellFIREState],
     Callable[[FrechetCellFIREState], FrechetCellFIREState],
@@ -1086,7 +1087,7 @@ def frechet_cell_fire(
         scalar_pressure (float): Applied external pressure in GPa
         max_step (float): Maximum allowed step size for ase_fire
         md_flavor ("vv_fire" | "ase_fire"): Optimization flavor. Default is "ase_fire".
-
+        fix_cartesian_mask (torch.Tensor of shape 3): Whether to move the atoms along the axes of the state.
     Returns:
         tuple: A pair of functions:
             - Initialization function that creates a FrechetCellFIREState
@@ -1262,6 +1263,7 @@ def frechet_cell_fire(
         eps=eps,
         is_cell_optimization=True,
         is_frechet=True,
+        fix_cartesian_mask=fix_cartesian_mask,
     )
     if md_flavor == ase_fire_key:
         step_func_kwargs["max_step"] = max_step
@@ -1285,6 +1287,7 @@ def _vv_fire_step(  # noqa: C901, PLR0915
     eps: float,
     is_cell_optimization: bool = False,
     is_frechet: bool = False,
+    fix_cartesian_mask: torch.Tensor = torch.tensor([1, 1, 1]),
 ) -> FireState | AnyFireCellState:
     """Perform one Velocity-Verlet based FIRE optimization step.
 
@@ -1305,6 +1308,7 @@ def _vv_fire_step(  # noqa: C901, PLR0915
         eps: Small epsilon value for numerical stability.
         is_cell_optimization: Flag indicating if cell optimization is active.
         is_frechet: Flag indicating if Frechet cell parameterization is used.
+        fix_cartesian_mask: Whether to move the atoms along the axes of the state.
 
     Returns:
         Updated state after performing one VV-FIRE step.
@@ -1332,6 +1336,8 @@ def _vv_fire_step(  # noqa: C901, PLR0915
     alpha_start_system = torch.full(
         (n_systems,), alpha_start.item(), device=device, dtype=dtype
     )
+
+    state.forces *= fix_cartesian_mask
 
     atom_wise_dt = state.dt[state.system_idx].unsqueeze(-1)
     state.velocities += 0.5 * atom_wise_dt * state.forces / state.masses.unsqueeze(-1)
@@ -1387,6 +1393,7 @@ def _vv_fire_step(  # noqa: C901, PLR0915
     results = model(state)
     state.forces = results["forces"]
     state.energy = results["energy"]
+    state.forces *= fix_cartesian_mask
 
     if is_cell_optimization:
         state.stress = results["stress"]
@@ -1504,6 +1511,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
     eps: float,
     is_cell_optimization: bool = False,
     is_frechet: bool = False,
+    fix_cartesian_mask: torch.Tensor = torch.tensor([1, 1, 1]),
 ) -> FireState | AnyFireCellState:
     """Perform one ASE-style FIRE optimization step.
 
@@ -1524,6 +1532,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
         eps: Small epsilon value for numerical stability.
         is_cell_optimization: Flag indicating if cell optimization is active.
         is_frechet: Flag indicating if Frechet cell parameterization is used.
+        fix_cartesian_mask: Whether to move the atoms along the axes of the state.
 
     Returns:
         Updated state after performing one ASE-FIRE step.
@@ -1533,6 +1542,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
 
     cur_deform_grad = None  # Initialize cur_deform_grad to prevent UnboundLocalError
 
+    state.forces *= fix_cartesian_mask
     nan_velocities = state.velocities.isnan().any(dim=1)
     if nan_velocities.any():
         state.velocities[nan_velocities] = torch.zeros_like(
@@ -1677,6 +1687,7 @@ def _ase_fire_step(  # noqa: C901, PLR0915
     results = model(state)
     state.forces = results["forces"]
     state.energy = results["energy"]
+    state.forces *= fix_cartesian_mask
 
     if is_cell_optimization:
         state.stress = results["stress"]

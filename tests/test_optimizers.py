@@ -878,3 +878,40 @@ def test_fire_fixed_cell_unit_cell_consistency(  # noqa: C901
             f"Energy for system {step} doesn't match position only optimization: "
             f"system={energy_unit_cell}, individual={individual_energies_fire[step]}"
         )
+
+
+@pytest.mark.parametrize("md_flavor", ["vv_fire", "ase_fire"])
+def test_fix_cartesian(
+    ar_supercell_sim_state: ts.SimState, lj_model: ModelInterface, md_flavor: MdFlavor
+) -> None:
+    perturbed_positions = (
+        ar_supercell_sim_state.positions.clone()
+        + torch.randn_like(ar_supercell_sim_state.positions) * 0.1
+    )
+    ar_supercell_sim_state.positions = perturbed_positions
+
+    final_states = ts.optimize(
+        system=ar_supercell_sim_state,
+        model=lj_model,
+        optimizer=ts.optimizers.frechet_cell_fire,
+        constant_volume=True,
+        hydrostatic_strain=True,
+        max_steps=50,
+        convergence_fn=ts.generate_force_convergence_fn(force_tol=1e-1),
+        autobatcher=ts.InFlightAutoBatcher(
+            model=lj_model,
+            max_memory_scaler=32.0,
+            memory_scales_with="n_atoms",
+        ),
+        fix_cartesian_mask=torch.tensor([1, 0, 0]),
+        md_flavor=md_flavor,
+    )
+
+    print(perturbed_positions[:, 1].tolist())
+    print(final_states.positions[:, 1].tolist())
+
+    # assert that the x coordinates have changed
+    assert not torch.allclose(final_states.positions[:, 0], perturbed_positions[:, 0])
+    # assert that other axes have not changed
+    assert torch.allclose(final_states.positions[:, 1], perturbed_positions[:, 1])
+    assert torch.allclose(final_states.positions[:, 2], perturbed_positions[:, 2])
