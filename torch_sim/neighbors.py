@@ -501,7 +501,7 @@ def standard_nl(
 def vesin_nl_ts(
     positions: torch.Tensor,
     cell: torch.Tensor,
-    pbc: bool,  # noqa: FBT001
+    pbc: torch.Tensor,
     cutoff: torch.Tensor,
     sort_id: bool = False,  # noqa: FBT001, FBT002
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -515,7 +515,8 @@ def vesin_nl_ts(
         positions: Atomic positions tensor of shape (num_atoms, 3)
         cell: Unit cell vectors according to the row vector convention, i.e.
             `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`.
-        pbc: Whether to use periodic boundary conditions (applied to all directions)
+        pbc: Tensor indicating whether to use periodic boundary conditions
+            for each axis. Has shape (n_systems, 3).
         cutoff: Maximum distance (scalar tensor) for considering atoms as neighbors
         sort_id: If True, sort neighbors by first atom index for better memory
             access patterns
