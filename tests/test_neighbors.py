@@ -95,7 +95,7 @@ CaCrP2O7_mvc_11955_symmetrized = {
         [0.2117993724186579, 1.0208820183960539, 7.305899571570074],
     ],
     "numbers": [*[20] * 2, *[24] * 2, *[15] * 4, *[8] * 14],
-    "pbc": [True, True, True],
+    "pbc": torch.Tensor([True, True, True]),
 }
 
 
@@ -170,7 +170,7 @@ def test_primitive_neighbor_list(
         pos = torch.tensor(atoms.positions, device=DEVICE, dtype=DTYPE)
         row_vector_cell = torch.tensor(atoms.cell.array, device=DEVICE, dtype=DTYPE)
 
-        pbc = atoms.pbc.any()
+        pbc = torch.tensor(atoms.pbc, device=DEVICE, dtype=DTYPE)
 
         # Get the neighbor list using the appropriate function (jitted or non-jitted)
         # Note: No self-interaction
@@ -178,7 +178,7 @@ def test_primitive_neighbor_list(
             quantities="ijS",
             positions=pos,
             cell=row_vector_cell,
-            pbc=(pbc, pbc, pbc),
+            pbc=pbc,
             cutoff=torch.tensor(cutoff, dtype=DTYPE, device=DEVICE),
             device=DEVICE,
             dtype=DTYPE,
@@ -258,7 +258,7 @@ def test_neighbor_list_implementations(
         # Convert to torch tensors
         pos = torch.tensor(atoms.positions, device=DEVICE, dtype=DTYPE)
         row_vector_cell = torch.tensor(atoms.cell.array, device=DEVICE, dtype=DTYPE)
-        pbc = atoms.pbc.any()
+        pbc: torch.Tensor = torch.tensor(atoms.pbc, device=DEVICE, dtype=DTYPE)
 
         # Get the neighbor list from the implementation being tested
         mapping, shifts = nl_implementation(
@@ -366,7 +366,11 @@ def test_primitive_neighbor_list_edge_cases() -> None:
     cutoff = torch.tensor(1.5, device=DEVICE, dtype=DTYPE)
 
     # Test all PBC combinations
-    for pbc in [(True, False, False), (False, True, False), (False, False, True)]:
+    for pbc in [
+        torch.Tensor([True, False, False]),
+        torch.Tensor([False, True, False]),
+        torch.Tensor([False, False, True]),
+    ]:
         idx_i, idx_j, _shifts = neighbors.primitive_neighbor_list(
             quantities="ijS",
             positions=pos,
@@ -383,7 +387,7 @@ def test_primitive_neighbor_list_edge_cases() -> None:
         quantities="ijS",
         positions=pos,
         cell=cell,
-        pbc=(True, True, True),
+        pbc=torch.Tensor([True, True, True]),
         cutoff=cutoff,
         device=DEVICE,
         dtype=DTYPE,
@@ -400,7 +404,10 @@ def test_standard_nl_edge_cases() -> None:
     cutoff = torch.tensor(1.5, device=DEVICE, dtype=DTYPE)
 
     # Test different PBC combinations
-    for pbc in (True, False):
+    for pbc in (
+        torch.Tensor([True, True, True]),
+        torch.Tensor([False, False, False]),
+    ):
         mapping, _shifts = neighbors.standard_nl(
             positions=pos,
             cell=cell,
@@ -413,7 +420,7 @@ def test_standard_nl_edge_cases() -> None:
     mapping, _shifts = neighbors.standard_nl(
         positions=pos,
         cell=cell,
-        pbc=True,
+        pbc=torch.Tensor([True, True, True]),
         cutoff=cutoff,
         sort_id=True,
     )
@@ -430,13 +437,20 @@ def test_vesin_nl_edge_cases() -> None:
     # Test both implementations
     for nl_fn in (neighbors.vesin_nl, neighbors.vesin_nl_ts):
         # Test different PBC combinations
-        for pbc in (True, False):
+        for pbc in (
+            torch.Tensor([True, True, True]),
+            torch.Tensor([False, False, False]),
+        ):
             mapping, _shifts = nl_fn(positions=pos, cell=cell, pbc=pbc, cutoff=cutoff)
             assert len(mapping[0]) > 0  # Should find neighbors
 
         # Test sort_id
         mapping, _shifts = nl_fn(
-            positions=pos, cell=cell, pbc=True, cutoff=cutoff, sort_id=True
+            positions=pos,
+            cell=cell,
+            pbc=torch.Tensor([True, True, True]),
+            cutoff=cutoff,
+            sort_id=True,
         )
         # Check if indices are sorted
         assert torch.all(mapping[0][1:] >= mapping[0][:-1])
@@ -446,7 +460,10 @@ def test_vesin_nl_edge_cases() -> None:
             pos_f32 = pos.to(dtype=torch.float32)
             cell_f32 = cell.to(dtype=torch.float32)
             mapping, _shifts = nl_fn(
-                positions=pos_f32, cell=cell_f32, pbc=True, cutoff=cutoff
+                positions=pos_f32,
+                cell=cell_f32,
+                pbc=torch.Tensor([True, True, True]),
+                cutoff=cutoff,
             )
             assert len(mapping[0]) > 0  # Should find neighbors
 
@@ -528,7 +545,12 @@ def test_neighbor_lists_time_and_memory() -> None:
                 self_interaction=False,
             )
         else:
-            _mapping, _shifts = nl_fn(positions=pos, cell=cell, pbc=True, cutoff=cutoff)
+            _mapping, _shifts = nl_fn(
+                positions=pos,
+                cell=cell,
+                pbc=torch.Tensor([True, True, True]),
+                cutoff=cutoff,
+            )
 
         end_time = time.perf_counter()
         execution_time = end_time - start_time

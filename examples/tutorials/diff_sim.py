@@ -111,14 +111,30 @@ plt.show()
 
 
 # %%
-@dataclass
+@dataclass(init=False)
 class BaseState:
     """Simple simulation state"""
 
     positions: torch.Tensor
     cell: torch.Tensor
-    pbc: bool
+    pbc: torch.Tensor
     species: torch.Tensor
+
+    def __init__(
+        self,
+        positions: torch.Tensor,
+        cell: torch.Tensor,
+        pbc: torch.Tensor | bool,
+        species: torch.Tensor,
+    ):
+        self.positions = positions
+        self.cell = cell
+        self.pbc = (
+            pbc
+            if isinstance(pbc, torch.Tensor)
+            else torch.tensor([pbc] * 3, dtype=torch.bool)
+        )
+        self.species = species
 
 
 class SoftSphereMultiModel(torch.nn.Module):
@@ -133,14 +149,18 @@ class SoftSphereMultiModel(torch.nn.Module):
         device: torch.device | None = None,
         dtype: torch.dtype = torch.float32,
         *,  # Force keyword-only arguments
-        pbc: bool = True,
+        pbc: torch.Tensor | bool = True,
         cutoff: float | None = None,
     ) -> None:
         """Initialize a soft sphere model for multi-component systems."""
         super().__init__()
         self.device = device or torch.device("cpu")
         self.dtype = dtype
-        self.pbc = pbc
+        self.pbc = (
+            pbc
+            if isinstance(pbc, torch.Tensor)
+            else torch.tensor([pbc] * 3, dtype=torch.bool)
+        )
 
         # Store species list and determine number of unique species
         self.species = species
