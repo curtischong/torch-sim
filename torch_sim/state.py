@@ -47,7 +47,9 @@ class SimState:
             stored as `[[a1, b1, c1], [a2, b2, c2], [a3, b3, c3]]` as opposed to
             the row vector convention `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`
             used by ASE.
-        pbc (bool): Boolean indicating whether to use periodic boundary conditions
+        pbc (bool | list[bool] | torch.Tensor): indicates periodic boundary
+            conditions in each axis. If a boolean is provided, all axes are
+            assumed to have the same periodic boundary conditions.
         atomic_numbers (torch.Tensor): Atomic numbers with shape (n_atoms,)
         system_idx (torch.Tensor): Maps each atom index to its system index.
             Has shape (n_atoms,), must be unique consecutive integers starting from 0.
@@ -80,7 +82,7 @@ class SimState:
     positions: torch.Tensor
     masses: torch.Tensor
     cell: torch.Tensor
-    pbc: bool  # TODO: do all calculators support mixed pbc?
+    pbc: torch.Tensor
     atomic_numbers: torch.Tensor
     system_idx: torch.Tensor | None = field(default=None)
 
@@ -102,6 +104,13 @@ class SimState:
 
     def __post_init__(self) -> None:
         """Initialize the SimState and validate the arguments."""
+        if isinstance(self.pbc, bool):
+            self.pbc = [self.pbc] * 3
+        if not isinstance(self.pbc, torch.Tensor):
+            self.pbc = torch.tensor(
+                self.pbc, dtype=torch.bool, device=self.positions.device
+            )
+
         # Validate and process the state after initialization.
         # data validation and fill system_idx
         # should make pbc a tensor here
