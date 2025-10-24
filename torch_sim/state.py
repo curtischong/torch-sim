@@ -47,7 +47,9 @@ class SimState:
             stored as `[[a1, b1, c1], [a2, b2, c2], [a3, b3, c3]]` as opposed to
             the row vector convention `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`
             used by ASE.
-        pbc (bool): Boolean indicating whether to use periodic boundary conditions
+        pbc (bool | torch.Tensor): Boolean tensor of shape (3,) indicating periodic
+            boundary conditions in each axis. If a boolean is provided, all axes are
+            assumed to be periodic or not.
         atomic_numbers (torch.Tensor): Atomic numbers with shape (n_atoms,)
         system_idx (torch.Tensor): Maps each atom index to its system index.
             Has shape (n_atoms,), must be unique consecutive integers starting from 0.
@@ -80,7 +82,7 @@ class SimState:
     positions: torch.Tensor
     masses: torch.Tensor
     cell: torch.Tensor
-    pbc: bool  # TODO: do all calculators support mixed pbc?
+    pbc: torch.Tensor
     atomic_numbers: torch.Tensor
     system_idx: torch.Tensor
 
@@ -98,7 +100,7 @@ class SimState:
         positions: torch.Tensor,
         masses: torch.Tensor,
         cell: torch.Tensor,
-        pbc: bool,  # noqa: FBT001
+        pbc: bool | torch.Tensor,  # noqa: FBT001
         atomic_numbers: torch.Tensor,
         system_idx: torch.Tensor | None = None,
     ) -> None:
@@ -108,7 +110,9 @@ class SimState:
             positions (torch.Tensor): Atomic positions with shape (n_atoms, 3)
             masses (torch.Tensor): Atomic masses with shape (n_atoms,)
             cell (torch.Tensor): Unit cell vectors with shape (n_systems, 3, 3).
-            pbc (bool): Boolean indicating whether to use periodic boundary conditions
+            pbc (bool | torch.Tensor): Boolean tensor of shape (3,) indicating periodic
+                boundary conditions in each axis. If a boolean is provided, all axes are
+                assumed to be periodic or not.
             atomic_numbers (torch.Tensor): Atomic numbers with shape (n_atoms,)
             system_idx (torch.Tensor | None): Maps each atom index to its system index.
                 Has shape (n_atoms,), must be unique consecutive integers starting from 0.
@@ -117,7 +121,7 @@ class SimState:
         self.positions = positions
         self.masses = masses
         self.cell = cell
-        self.pbc = pbc
+        self.pbc = torch.tensor([pbc] * 3) if isinstance(pbc, bool) else pbc
         self.atomic_numbers = atomic_numbers
 
         # Validate and process the state after initialization.

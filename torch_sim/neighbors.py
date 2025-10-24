@@ -11,7 +11,7 @@ from torch_sim import transforms
 @torch.jit.script
 def primitive_neighbor_list(  # noqa: C901, PLR0915
     quantities: str,
-    pbc: tuple[bool, bool, bool],
+    pbc: torch.Tensor,
     cell: torch.Tensor,
     positions: torch.Tensor,
     cutoff: torch.Tensor,
@@ -42,8 +42,8 @@ def primitive_neighbor_list(  # noqa: C901, PLR0915
                   between atom i and j). With the shift vector S, the
                   distances D between atoms can be computed from:
                   D = positions[j]-positions[i]+S.dot(cell)
-        pbc: 3-tuple indicating giving periodic boundaries in the three Cartesian
-            directions.
+        pbc: Boolean tensor of shape (3,) indicating periodic boundary conditions in
+            each axis.
         cell: Unit cell vectors according to the row vector convention, i.e.
             `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`.
         positions: Atomic positions. Anything that can be converted to an ndarray of
@@ -411,7 +411,7 @@ def primitive_neighbor_list(  # noqa: C901, PLR0915
 def standard_nl(
     positions: torch.Tensor,
     cell: torch.Tensor,
-    pbc: bool,  # noqa: FBT001
+    pbc: torch.Tensor,
     cutoff: torch.Tensor,
     sort_id: bool = False,  # noqa: FBT001, FBT002
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -437,7 +437,8 @@ def standard_nl(
         positions: Atomic positions tensor of shape (num_atoms, 3)
         cell: Unit cell vectors according to the row vector convention, i.e.
             `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`.
-        pbc: Whether to use periodic boundary conditions (applied to all directions)
+        pbc: Boolean tensor of shape (3,) indicating periodic boundary conditions in
+            each axis.
         cutoff: Maximum distance for considering atoms as neighbors
         sort_id: If True, sort neighbors by first atom index for better memory
             access patterns
@@ -462,7 +463,7 @@ def standard_nl(
     Notes:
         - The function uses primitive_neighbor_list internally but provides a simpler
           interface
-        - For non-periodic systems (pbc=False), shifts will be zero vectors
+        - For non-periodic systems (pbc=[False, False, False]), shifts will be zero vectors
         - The neighbor list includes both (i,j) and (j,i) pairs for complete force
           computation
         - Memory usage scales with system size and number of neighbors per atom
@@ -476,7 +477,7 @@ def standard_nl(
         quantities="ijS",
         positions=positions,
         cell=cell,
-        pbc=(pbc, pbc, pbc),
+        pbc=pbc,
         cutoff=cutoff,
         device=device,
         dtype=dtype,
@@ -501,7 +502,7 @@ def standard_nl(
 def vesin_nl_ts(
     positions: torch.Tensor,
     cell: torch.Tensor,
-    pbc: bool,  # noqa: FBT001
+    pbc: torch.Tensor,
     cutoff: torch.Tensor,
     sort_id: bool = False,  # noqa: FBT001, FBT002
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -515,7 +516,8 @@ def vesin_nl_ts(
         positions: Atomic positions tensor of shape (num_atoms, 3)
         cell: Unit cell vectors according to the row vector convention, i.e.
             `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`.
-        pbc: Whether to use periodic boundary conditions (applied to all directions)
+        pbc: Boolean tensor of shape (3,) indicating periodic boundary conditions in
+            each axis.
         cutoff: Maximum distance (scalar tensor) for considering atoms as neighbors
         sort_id: If True, sort neighbors by first atom index for better memory
             access patterns
@@ -571,7 +573,7 @@ def vesin_nl_ts(
 def vesin_nl(
     positions: torch.Tensor,
     cell: torch.Tensor,
-    pbc: bool,  # noqa: FBT001
+    pbc: torch.Tensor,
     cutoff: float | torch.Tensor,
     sort_id: bool = False,  # noqa: FBT001, FBT002
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -585,7 +587,8 @@ def vesin_nl(
         positions: Atomic positions tensor of shape (num_atoms, 3)
         cell: Unit cell vectors according to the row vector convention, i.e.
             `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`.
-        pbc: Whether to use periodic boundary conditions (applied to all directions)
+        pbc: Boolean tensor of shape (3,) indicating periodic boundary conditions in
+            each axis.
         cutoff: Maximum distance (scalar tensor) for considering atoms as neighbors
         sort_id: If True, sort neighbors by first atom index for better memory
             access patterns

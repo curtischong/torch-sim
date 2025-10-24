@@ -154,7 +154,8 @@ def position_step[T: MDState](state: T, dt: float | torch.Tensor) -> T:
     """
     new_positions = state.positions + state.velocities * dt
 
-    if state.pbc:
+    # TODO(curtis): we should only wrap along pbc axes
+    if state.pbc.any():
         # Split positions and cells by system
         new_positions = transforms.pbc_wrap_batched(
             new_positions, state.cell, state.system_idx

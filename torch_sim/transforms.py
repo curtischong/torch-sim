@@ -216,19 +216,20 @@ def minimum_image_displacement(
     *,
     dr: torch.Tensor,
     cell: torch.Tensor | None = None,
-    pbc: bool = True,
+    pbc: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Apply minimum image convention to displacement vectors.
 
     Args:
         dr (torch.Tensor): Displacement vectors [N, 3] or [N, N, 3].
         cell (Optional[torch.Tensor]): Unit cell matrix [3, 3].
-        pbc (bool): Whether to apply periodic boundary conditions.
+        pbc (Optional[torch.Tensor]): Boolean tensor of shape (3,) indicating
+            periodic boundary conditions in each dimension.
 
     Returns:
         torch.Tensor: Minimum image displacement vectors with same shape as input.
     """
-    if cell is None or not pbc:
+    if cell is None or (pbc is not None and not pbc.any()):
         return dr
 
     # Convert to fractional coordinates
@@ -246,7 +247,7 @@ def get_pair_displacements(
     *,
     positions: torch.Tensor,
     cell: torch.Tensor | None = None,
-    pbc: bool = True,
+    pbc: torch.Tensor | None = None,
     pairs: tuple[torch.Tensor, torch.Tensor] | None = None,
     shifts: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -255,7 +256,8 @@ def get_pair_displacements(
     Args:
         positions (torch.Tensor): Atomic positions [N, 3].
         cell (Optional[torch.Tensor]): Unit cell matrix [3, 3].
-        pbc (bool): Whether to apply periodic boundary conditions.
+        pbc (Optional[torch.Tensor]): Boolean tensor of shape (3,) indicating
+            periodic boundary conditions in each dimension.
         pairs (Optional[Tuple[torch.Tensor, torch.Tensor]]):
             (i, j) indices for specific pairs to compute.
         shifts (Optional[torch.Tensor]): Shift vectors for periodic images [n_pairs, 3].
@@ -271,7 +273,7 @@ def get_pair_displacements(
         rj = positions.unsqueeze(1)  # [N, 1, 3]
         dr = rj - ri  # [N, N, 3]
 
-        if cell is not None and pbc:
+        if cell is not None and pbc is not None and pbc.any():
             dr = minimum_image_displacement(dr=dr, cell=cell, pbc=pbc)
 
         # Calculate distances
