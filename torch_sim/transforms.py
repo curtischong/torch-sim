@@ -111,7 +111,7 @@ def inverse_box(box: torch.Tensor) -> torch.Tensor:
 
 
 def pbc_wrap_general(
-    positions: torch.Tensor, lattice_vectors: torch.Tensor
+    positions: torch.Tensor, lattice_vectors: torch.Tensor, pbc: torch.Tensor
 ) -> torch.Tensor:
     """Apply periodic boundary conditions using lattice
         vector transformation method.
@@ -127,6 +127,8 @@ def pbc_wrap_general(
             containing particle positions in real space.
         lattice_vectors (torch.Tensor): Tensor of shape (d, d) containing
             lattice vectors as columns (A matrix in the equations).
+        pbc (torch.Tensor): Tensor of shape (3,) containing boolean values indicating
+            whether periodic boundary conditions are applied in each dimension.
 
     Returns:
         torch.Tensor: Wrapped positions in real space with same shape as input positions.
@@ -147,14 +149,18 @@ def pbc_wrap_general(
     frac_coords = positions @ torch.linalg.inv(lattice_vectors).T
 
     # Wrap to reference cell [0,1) using modulo
-    wrapped_frac = frac_coords % 1.0
+    wrapped_frac = frac_coords.clone()
+    wrapped_frac[pbc] = frac_coords[pbc] % 1.0
 
     # Transform back to real space: r_row_wrapped = wrapped_f_row @ M_row
     return wrapped_frac @ lattice_vectors.T
 
 
 def pbc_wrap_batched(
-    positions: torch.Tensor, cell: torch.Tensor, system_idx: torch.Tensor
+    positions: torch.Tensor,
+    cell: torch.Tensor,
+    system_idx: torch.Tensor,
+    pbc: torch.Tensor,
 ) -> torch.Tensor:
     """Apply periodic boundary conditions to batched systems.
 
@@ -169,6 +175,8 @@ def pbc_wrap_batched(
             lattice vectors as column vectors.
         system_idx (torch.Tensor): Tensor of shape (n_atoms,) containing system
             indices for each atom.
+        pbc (torch.Tensor): Tensor of shape (3,) containing boolean values indicating
+            whether periodic boundary conditions are applied in each dimension.
 
     Returns:
         torch.Tensor: Wrapped positions in real space with same shape as input positions.
@@ -200,7 +208,8 @@ def pbc_wrap_batched(
     frac_coords = torch.bmm(B_per_atom, positions.unsqueeze(2)).squeeze(2)
 
     # Wrap to reference cell [0,1) using modulo
-    wrapped_frac = frac_coords % 1.0
+    wrapped_frac = frac_coords.clone()
+    wrapped_frac[:, pbc] = frac_coords[:, pbc] % 1.0
 
     # Transform back to real space: r = A·f
     # Get the cell for each atom based on its system index
