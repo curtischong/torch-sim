@@ -117,7 +117,7 @@ class BaseState:
 
     positions: torch.Tensor
     cell: torch.Tensor
-    pbc: bool
+    pbc: torch.Tensor
     species: torch.Tensor
 
 
@@ -133,7 +133,7 @@ class SoftSphereMultiModel(torch.nn.Module):
         device: torch.device | None = None,
         dtype: torch.dtype = torch.float32,
         *,  # Force keyword-only arguments
-        pbc: bool = True,
+        pbc: torch.Tensor | None = None,
         cutoff: float | None = None,
     ) -> None:
         """Initialize a soft sphere model for multi-component systems."""
