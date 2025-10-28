@@ -125,7 +125,7 @@ jobs:
         run: |
           if [[ "${{ matrix.model.name }}" == *"fairchem"* ]]; then
             uv pip install "huggingface_hub[cli]" --system
-            huggingface-cli login --token "$HF_TOKEN"
+            hf auth login --token "$HF_TOKEN"
           fi
           pytest -vv -ra -rs --cov=torch_sim --cov-report=xml ${{ matrix.model.test_path }}
 
@@ -176,6 +176,6 @@ jobs:
         run: |
           if [[ "${{ matrix.example }}" == *"fairchem"* ]]; then
             uv pip install "huggingface_hub[cli]" --system
-            huggingface-cli login --token "$HF_TOKEN"
+            hf auth login --token "$HF_TOKEN"
           fi
           uv run --with . ${{ matrix.example }}
