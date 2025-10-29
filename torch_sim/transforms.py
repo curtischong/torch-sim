@@ -113,7 +113,9 @@ def inverse_box(box: torch.Tensor) -> torch.Tensor:
 
 @deprecated("Use wrap_positions instead")
 def pbc_wrap_general(
-    positions: torch.Tensor, lattice_vectors: torch.Tensor, pbc: torch.Tensor
+    positions: torch.Tensor,
+    lattice_vectors: torch.Tensor,
+    pbc: torch.Tensor | bool = True,
 ) -> torch.Tensor:
     """Apply periodic boundary conditions using lattice
         vector transformation method.
@@ -129,12 +131,16 @@ def pbc_wrap_general(
             containing particle positions in real space.
         lattice_vectors (torch.Tensor): Tensor of shape (d, d) containing
             lattice vectors as columns (A matrix in the equations).
-        pbc (torch.Tensor): Tensor of shape (3,) containing boolean values indicating
+        pbc (torch.Tensor | bool): Boolean tensor of shape (3,) or boolean indicating
             whether periodic boundary conditions are applied in each dimension.
+            If a boolean is provided, all axes are assumed to have the same periodic
+            boundary conditions.
 
     Returns:
         torch.Tensor: Wrapped positions in real space with same shape as input positions.
     """
+    if isinstance(pbc, bool):
+        pbc = torch.tensor([pbc] * 3)
     # Validate inputs
     if not torch.is_floating_point(positions) or not torch.is_floating_point(
         lattice_vectors

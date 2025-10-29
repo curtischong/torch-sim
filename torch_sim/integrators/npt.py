@@ -378,9 +378,9 @@ def _npt_langevin_position_step(
     state.positions = c_1 + c_2 * c_3
 
     # Apply periodic boundary conditions if needed
-    if state.pbc:
+    if state.pbc.any():
         state.positions = ts.transforms.pbc_wrap_batched(
-            state.positions, state.cell, state.system_idx
+            state.positions, state.cell, state.system_idx, state.pbc
         )
 
     return state
