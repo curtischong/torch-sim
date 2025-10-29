@@ -548,12 +548,13 @@ def vesin_nl_ts(
     # Convert tensors to CPU and float64 properly
     positions_cpu = positions.cpu().to(dtype=torch.float64)
     cell_cpu = cell.cpu().to(dtype=torch.float64)
+    periodic_cpu = pbc.to(dtype=torch.bool).cpu()
 
     # Only works on CPU and requires float64
     i, j, S = neighbor_list_fn.compute(
         points=positions_cpu,
         box=cell_cpu,
-        periodic=pbc,
+        periodic=periodic_cpu,
         quantities="ijS",
     )
 
@@ -620,12 +621,13 @@ def vesin_nl(
     # Convert tensors to CPU and float64 without gradients
     positions_cpu = positions.detach().cpu().to(dtype=torch.float64)
     cell_cpu = cell.detach().cpu().to(dtype=torch.float64)
+    periodic_cpu = pbc.detach().to(dtype=torch.bool).cpu()
 
     # Only works on CPU and returns numpy arrays
     i, j, S = neighbor_list_fn.compute(
         points=positions_cpu,
         box=cell_cpu,
-        periodic=pbc,
+        periodic=periodic_cpu,
         quantities="ijS",
     )
     i, j = (
