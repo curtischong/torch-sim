@@ -298,7 +298,7 @@ def get_pair_displacements(
     i, j = pairs
     dr = positions[j] - positions[i]  # [n_pairs, 3]
 
-    if cell is not None and pbc:
+    if cell is not None and pbc is not None and pbc.any():
         if shifts is not None:
             # Apply provided shifts
             dr = dr + torch.einsum("ij,kj->ki", cell, shifts)

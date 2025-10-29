@@ -478,7 +478,7 @@ def test_get_state(trajectory: TorchSimTrajectory, random_state: MDState) -> Non
         np.testing.assert_allclose(state.positions, random_state.positions)
         np.testing.assert_allclose(state.cell, random_state.cell)
         np.testing.assert_allclose(state.atomic_numbers, random_state.atomic_numbers)
-        assert state.pbc == random_state.pbc
+        assert torch.equals(state.pbc, random_state.pbc)
 
 
 def test_write_ase_trajectory(
