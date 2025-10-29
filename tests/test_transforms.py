@@ -196,7 +196,7 @@ def test_pbc_wrap_general_batch() -> None:
 
 
 @pytest.mark.parametrize(
-    "pbc", [list(itertools.product([False, True], repeat=3)), True, False]
+    "pbc", [*list(itertools.product([False, True], repeat=3)), True, False]
 )
 @pytest.mark.parametrize("pretty_translation", [True, False])
 def test_wrap_positions_matches_ase(

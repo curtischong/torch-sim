@@ -158,7 +158,7 @@ def pbc_wrap_general(
 
     # Wrap to reference cell [0,1) using modulo
     wrapped_frac = frac_coords.clone()
-    wrapped_frac[pbc] = frac_coords[pbc] % 1.0
+    wrapped_frac[:, pbc] = frac_coords[:, pbc] % 1.0
 
     # Transform back to real space: r_row_wrapped = wrapped_f_row @ M_row
     return wrapped_frac @ lattice_vectors.T
@@ -168,7 +168,7 @@ def pbc_wrap_batched(
     positions: torch.Tensor,
     cell: torch.Tensor,
     system_idx: torch.Tensor,
-    pbc: torch.Tensor,
+    pbc: torch.Tensor | bool = True,
 ) -> torch.Tensor:
     """Apply periodic boundary conditions to batched systems.
 
@@ -183,12 +183,16 @@ def pbc_wrap_batched(
             lattice vectors as column vectors.
         system_idx (torch.Tensor): Tensor of shape (n_atoms,) containing system
             indices for each atom.
-        pbc (torch.Tensor): Tensor of shape (3,) containing boolean values indicating
-            whether periodic boundary conditions are applied in each dimension.
+        pbc (torch.Tensor | bool): Tensor of shape (3,) containing boolean values
+            indicating whether periodic boundary conditions are applied in each dimension.
+            Can also be a bool. Defaults to True.
 
     Returns:
         torch.Tensor: Wrapped positions in real space with same shape as input positions.
     """
+    if isinstance(pbc, bool):
+        pbc = torch.Tensor([pbc, pbc, pbc], dtype=torch.bool, device=positions.device)
+
     # Validate inputs
     if not torch.is_floating_point(positions) or not torch.is_floating_point(cell):
         raise TypeError("Positions and lattice vectors must be floating point tensors.")
@@ -231,7 +235,7 @@ def minimum_image_displacement(
     *,
     dr: torch.Tensor,
     cell: torch.Tensor | None = None,
-    pbc: torch.Tensor | None = None,
+    pbc: torch.Tensor | bool = True,
 ) -> torch.Tensor:
     """Apply minimum image convention to displacement vectors.
 
@@ -244,7 +248,9 @@ def minimum_image_displacement(
     Returns:
         torch.Tensor: Minimum image displacement vectors with same shape as input.
     """
-    if cell is None or (pbc is not None and not pbc.any()):
+    if isinstance(pbc, bool):
+        pbc = torch.tensor([pbc] * 3, dtype=torch.bool, device=dr.device)
+    if cell is None or not pbc.any():
         return dr
 
     # Convert to fractional coordinates
@@ -262,7 +268,7 @@ def get_pair_displacements(
     *,
     positions: torch.Tensor,
     cell: torch.Tensor | None = None,
-    pbc: torch.Tensor | None = None,
+    pbc: torch.Tensor | bool = True,
     pairs: tuple[torch.Tensor, torch.Tensor] | None = None,
     shifts: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -282,13 +288,15 @@ def get_pair_displacements(
             - Displacement vectors [n_pairs, 3].
             - Distances [n_pairs].
     """
+    if isinstance(pbc, bool):
+        pbc = torch.tensor([pbc] * 3, dtype=torch.bool, device=positions.device)
     if pairs is None:
         # Create full distance matrix
         ri = positions.unsqueeze(0)  # [1, N, 3]
         rj = positions.unsqueeze(1)  # [N, 1, 3]
         dr = rj - ri  # [N, N, 3]
 
-        if cell is not None and pbc is not None and pbc.any():
+        if cell is not None and pbc.any():
             dr = minimum_image_displacement(dr=dr, cell=cell, pbc=pbc)
 
         # Calculate distances
@@ -304,7 +312,7 @@ def get_pair_displacements(
     i, j = pairs
     dr = positions[j] - positions[i]  # [n_pairs, 3]
 
-    if cell is not None and pbc is not None and pbc.any():
+    if cell is not None and pbc.any():
         if shifts is not None:
             # Apply provided shifts
             dr = dr + torch.einsum("ij,kj->ki", cell, shifts)
