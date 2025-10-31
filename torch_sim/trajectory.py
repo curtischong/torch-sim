@@ -742,6 +742,10 @@ class TorchSimTrajectory:
 
         if len(sub_states) != len(steps):
             raise ValueError(f"{len(sub_states)=} must match the {len(steps)=}")
+
+        # Use the selected states for data serialization
+        state = sub_states
+
         # Initialize data dictionary with required arrays
         data = {
             "positions": torch.stack([s.positions for s in state]),
@@ -781,8 +785,7 @@ class TorchSimTrajectory:
             # Save atomic numbers only for first frame
             self.write_arrays({"atomic_numbers": state[0].atomic_numbers}, 0)
 
-        if "pbc" not in self.array_registry:
-            self.write_arrays({"pbc": state[0].pbc}, [0])
+        data["pbc"] = torch.stack([s.pbc.reshape(-1) for s in state])
 
         # Write all arrays to file
         self.write_arrays(data, steps)
@@ -833,7 +836,7 @@ class TorchSimTrajectory:
         arrays["cell"] = np.expand_dims(return_prop(self, "cell", frame), axis=0)
         arrays["atomic_numbers"] = return_prop(self, "atomic_numbers", frame)
         arrays["masses"] = return_prop(self, "masses", frame)
-        arrays["pbc"] = np.expand_dims(return_prop(self, "pbc", frame), axis=0)
+        arrays["pbc"] = return_prop(self, "pbc", frame)
 
         return arrays
 
@@ -897,7 +900,7 @@ class TorchSimTrajectory:
             numbers=np.ascontiguousarray(arrays["atomic_numbers"]),
             positions=np.ascontiguousarray(arrays["positions"]),
             cell=np.ascontiguousarray(arrays["cell"])[0],
-            pbc=np.ascontiguousarray(arrays["pbc"])[0],
+            pbc=np.ascontiguousarray(arrays["pbc"]),
         )
 
     def get_state(

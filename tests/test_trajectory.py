@@ -439,7 +439,9 @@ def test_get_atoms(trajectory: TorchSimTrajectory, random_state: MDState) -> Non
     np.testing.assert_allclose(
         atoms.get_atomic_numbers(), random_state.atomic_numbers.numpy()
     )
-    assert atoms.pbc.all() == random_state.pbc
+    np.testing.assert_array_equal(
+        atoms.pbc, random_state.pbc.detach().cpu().numpy()
+    )
 
 
 def test_get_state(trajectory: TorchSimTrajectory, random_state: MDState) -> None:
@@ -509,7 +511,9 @@ def test_write_ase_trajectory(
         np.testing.assert_allclose(
             atoms.get_atomic_numbers(), random_state.atomic_numbers.numpy()
         )
-        assert atoms.pbc.all() == random_state.pbc
+        np.testing.assert_array_equal(
+            atoms.pbc, random_state.pbc.detach().cpu().numpy()
+        )
 
     # Clean up
     ase_traj.close()

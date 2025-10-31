@@ -48,6 +48,17 @@ class MDState(SimState):
         SimState._system_attributes | {"energy"}  # noqa: SLF001
     )
 
+    def __post_init__(self) -> None:
+        """Ensure SimState initialization logic runs for MDState."""
+        super().__init__(
+            positions=self.positions,
+            masses=self.masses,
+            cell=self.cell,
+            pbc=self.pbc,
+            atomic_numbers=self.atomic_numbers,
+            system_idx=self.system_idx,
+        )
+
     @property
     def velocities(self) -> torch.Tensor:
         """Velocities calculated from momenta and masses with shape
