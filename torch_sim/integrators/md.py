@@ -4,10 +4,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
+from typing_extensions import Unpack
 
 from torch_sim import transforms
 from torch_sim.models.interface import ModelInterface
-from torch_sim.state import SimState
+from torch_sim.state import SimState, SimStateParams
 
 
 @dataclass
@@ -47,6 +48,20 @@ class MDState(SimState):
     _system_attributes = (
         SimState._system_attributes | {"energy"}  # noqa: SLF001
     )
+
+    def __init__(
+        self,
+        *,
+        momenta: torch.Tensor,
+        energy: torch.Tensor,
+        forces: torch.Tensor,
+        **kwargs: Unpack[SimStateParams],
+    ) -> None:
+        """This init ensures that SimState's init is called. See https://bugs.python.org/issue43835."""
+        super().__init__(**kwargs)
+        self.momenta = momenta
+        self.energy = energy
+        self.forces = forces
 
     @property
     def velocities(self) -> torch.Tensor:

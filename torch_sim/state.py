@@ -10,7 +10,7 @@ import typing
 from collections import defaultdict
 from collections.abc import Generator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypedDict
 
 import torch
 
@@ -22,6 +22,17 @@ if TYPE_CHECKING:
     from ase import Atoms
     from phonopy.structure.atoms import PhonopyAtoms
     from pymatgen.core import Structure
+
+
+class SimStateParams(TypedDict):
+    """Parameters for initializing a SimState."""
+
+    positions: torch.Tensor
+    masses: torch.Tensor
+    cell: torch.Tensor
+    pbc: bool
+    atomic_numbers: torch.Tensor
+    system_idx: torch.Tensor | None
 
 
 @dataclass(init=False)
