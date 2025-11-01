@@ -157,12 +157,13 @@ def state_to_atom_graphs(  # noqa: PLR0915
         atomic_numbers_per_system = atomic_numbers[system_mask]
         atomic_numbers_embedding_per_system = atomic_numbers_embedding[system_mask]
         cell_per_system = row_vector_cell[sys_idx]
+        pbc = state.pbc
 
         # Compute edges directly for this system
         edges, vectors, unit_shifts = feat_util.compute_pbc_radius_graph(
             positions=positions_per_system,
             cell=cell_per_system,
-            pbc=state.pbc,
+            pbc=pbc,
             radius=system_config.radius,
             max_number_neighbors=max_num_neighbors,
             edge_method=edge_method,
@@ -198,7 +199,7 @@ def state_to_atom_graphs(  # noqa: PLR0915
 
         graph_feats = {
             "cell": cell_per_system,
-            "pbc": state.pbc,
+            "pbc": pbc,
             "lattice": lattice_per_system.to(device=positions_per_system.device),
         }
 
