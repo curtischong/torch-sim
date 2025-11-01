@@ -60,7 +60,7 @@ class MDState(SimState):
         energy: torch.Tensor,
         forces: torch.Tensor,
     ) -> None:
-        """Ensure SimState initialization logic runs for MDState."""
+        """Ensures that SimState's init is called. See https://bugs.python.org/issue43835."""
         super().__init__(positions, masses, cell, pbc, atomic_numbers, system_idx)
         self.momenta = momenta
         self.energy = energy
