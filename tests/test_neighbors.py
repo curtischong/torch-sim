@@ -95,7 +95,7 @@ CaCrP2O7_mvc_11955_symmetrized = {
         [0.2117993724186579, 1.0208820183960539, 7.305899571570074],
     ],
     "numbers": [*[20] * 2, *[24] * 2, *[15] * 4, *[8] * 14],
-    "pbc": torch.Tensor([True, True, True]),
+    "pbc": [True, True, True],
 }
 
 
@@ -258,7 +258,7 @@ def test_neighbor_list_implementations(
         # Convert to torch tensors
         pos = torch.tensor(atoms.positions, device=DEVICE, dtype=DTYPE)
         row_vector_cell = torch.tensor(atoms.cell.array, device=DEVICE, dtype=DTYPE)
-        pbc: torch.Tensor = torch.tensor(atoms.pbc, device=DEVICE, dtype=DTYPE)
+        pbc = torch.tensor(atoms.pbc, device=DEVICE, dtype=DTYPE)
 
         # Get the neighbor list from the implementation being tested
         mapping, shifts = nl_implementation(
@@ -366,16 +366,12 @@ def test_primitive_neighbor_list_edge_cases() -> None:
     cutoff = torch.tensor(1.5, device=DEVICE, dtype=DTYPE)
 
     # Test all PBC combinations
-    for pbc in [
-        torch.Tensor([True, False, False]),
-        torch.Tensor([False, True, False]),
-        torch.Tensor([False, False, True]),
-    ]:
+    for pbc in [(True, False, False), (False, True, False), (False, False, True)]:
         idx_i, idx_j, _shifts = neighbors.primitive_neighbor_list(
             quantities="ijS",
             positions=pos,
             cell=cell,
-            pbc=pbc,
+            pbc=torch.tensor(pbc, device=DEVICE, dtype=DTYPE),
             cutoff=cutoff,
             device=DEVICE,
             dtype=DTYPE,
@@ -404,14 +400,11 @@ def test_standard_nl_edge_cases() -> None:
     cutoff = torch.tensor(1.5, device=DEVICE, dtype=DTYPE)
 
     # Test different PBC combinations
-    for pbc in (
-        torch.Tensor([True, True, True]),
-        torch.Tensor([False, False, False]),
-    ):
+    for pbc in (True, False):
         mapping, _shifts = neighbors.standard_nl(
             positions=pos,
             cell=cell,
-            pbc=pbc,
+            pbc=torch.tensor([pbc] * 3, device=DEVICE, dtype=DTYPE),
             cutoff=cutoff,
         )
         assert len(mapping[0]) > 0  # Should find neighbors
