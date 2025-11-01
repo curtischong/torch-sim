@@ -100,7 +100,7 @@ class SimState:
         positions: torch.Tensor,
         masses: torch.Tensor,
         cell: torch.Tensor,
-        pbc: bool | list[bool] | torch.Tensor,  # noqa: FBT001
+        pbc: bool | list[bool] | torch.Tensor,
         atomic_numbers: torch.Tensor,
         system_idx: torch.Tensor | None = None,
     ) -> None:

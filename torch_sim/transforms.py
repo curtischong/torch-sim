@@ -115,7 +115,7 @@ def inverse_box(box: torch.Tensor) -> torch.Tensor:
 def pbc_wrap_general(
     positions: torch.Tensor,
     lattice_vectors: torch.Tensor,
-    pbc: torch.Tensor | bool = True,  # noqa: FBT001, FBT002
+    pbc: torch.Tensor | bool = True,  # noqa: FBT002
 ) -> torch.Tensor:
     """Apply periodic boundary conditions using lattice
         vector transformation method.
@@ -170,7 +170,7 @@ def pbc_wrap_batched(
     positions: torch.Tensor,
     cell: torch.Tensor,
     system_idx: torch.Tensor,
-    pbc: torch.Tensor | bool = True,  # noqa: FBT001, FBT002
+    pbc: torch.Tensor | bool = True,  # noqa: FBT002
 ) -> torch.Tensor:
     """Apply periodic boundary conditions to batched systems.
 
