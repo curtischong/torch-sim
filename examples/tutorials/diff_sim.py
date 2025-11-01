@@ -111,7 +111,7 @@ plt.show()
 
 
 # %%
-@dataclass(init=False)
+@dataclass
 class BaseState:
     """Simple simulation state"""
 
@@ -119,22 +119,6 @@ class BaseState:
     cell: torch.Tensor
     pbc: torch.Tensor
     species: torch.Tensor
-
-    def __init__(
-        self,
-        positions: torch.Tensor,
-        cell: torch.Tensor,
-        pbc: torch.Tensor | bool,
-        species: torch.Tensor,
-    ):
-        self.positions = positions
-        self.cell = cell
-        self.pbc = (
-            pbc
-            if isinstance(pbc, torch.Tensor)
-            else torch.tensor([pbc] * 3, dtype=torch.bool)
-        )
-        self.species = species
 
 
 class SoftSphereMultiModel(torch.nn.Module):
@@ -402,7 +386,12 @@ def simulation(
     # Minimize to the nearest minimum.
     init_fn, apply_fn = gradient_descent(model, lr=0.1)
 
-    custom_state = BaseState(positions=R, cell=cell, species=species, pbc=True)
+    custom_state = BaseState(
+        positions=R,
+        cell=cell,
+        species=species,
+        pbc=torch.tensor([True] * 3, dtype=torch.bool),
+    )
     state = init_fn(custom_state)
     for _ in range(simulation_steps):
         state = apply_fn(state)
