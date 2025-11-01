@@ -48,6 +48,17 @@ class MDState(SimState):
         SimState._system_attributes | {"energy"}  # noqa: SLF001
     )
 
+    def __post_init__(self) -> None:
+        """Ensure SimState initialization logic runs for MDState."""
+        super().__init__(
+            positions=self.positions,
+            masses=self.masses,
+            cell=self.cell,
+            pbc=self.pbc,
+            atomic_numbers=self.atomic_numbers,
+            system_idx=self.system_idx,
+        )
+
     @property
     def velocities(self) -> torch.Tensor:
         """Velocities calculated from momenta and masses with shape
@@ -154,10 +165,14 @@ def position_step[T: MDState](state: T, dt: float | torch.Tensor) -> T:
     """
     new_positions = state.positions + state.velocities * dt
 
-    if state.pbc:
+    # TODO(curtis): we should only wrap along pbc axes
+    if state.pbc.any():
         # Split positions and cells by system
         new_positions = transforms.pbc_wrap_batched(
-            new_positions, state.cell, state.system_idx
+            new_positions,
+            state.cell,
+            state.system_idx,
+            state.pbc,
         )
 
     state.positions = new_positions

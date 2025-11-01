@@ -56,7 +56,7 @@ def min_distance(
     _, distances = transforms.get_pair_displacements(
         positions=positions,
         cell=cell,
-        pbc=True,  # Use periodic boundary conditions
+        pbc=torch.tensor([True, True, True]),  # Use periodic boundary conditions
     )
 
     # Create a mask for distances below tolerance to exclude self-interactions
