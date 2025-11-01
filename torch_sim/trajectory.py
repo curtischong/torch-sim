@@ -743,9 +743,6 @@ class TorchSimTrajectory:
         if len(sub_states) != len(steps):
             raise ValueError(f"{len(sub_states)=} must match the {len(steps)=}")
 
-        # Use the selected states for data serialization
-        state = sub_states
-
         # Initialize data dictionary with required arrays
         data = {
             "positions": torch.stack([s.positions for s in state]),

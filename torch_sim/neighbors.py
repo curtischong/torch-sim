@@ -535,6 +535,7 @@ def vesin_nl_ts(
         - Uses VesinNeighborListTorch for TorchScript compatibility
         - Requires CPU tensors in float64 precision internally
         - Returns tensors on the same device as input with original precision
+        - For non-periodic systems, shifts will be zero vectors
         - The neighbor list includes both (i,j) and (j,i) pairs
 
     References:
