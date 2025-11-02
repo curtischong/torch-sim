@@ -393,7 +393,11 @@ class SimState:
     @classmethod
     def _assert_no_tensor_attributes_can_be_none(cls) -> None:
         # We need to use get_type_hints to correctly inspect the types
+
+        # exceptions exist because the type hint doesn't actually reflect the real type
+        # (since we change their type in the post_init)
         exceptions = {"system_idx"}
+
         type_hints = typing.get_type_hints(cls)
         for attr_name, attr_type_hint in type_hints.items():
             origin = typing.get_origin(attr_type_hint)
