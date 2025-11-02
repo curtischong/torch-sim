@@ -125,19 +125,20 @@ class SimState:
                 f"masses {shapes[1]}, atomic_numbers {shapes[2]}"
             )
 
-        if self.system_idx is None:
+        system_idx = self.system_idx
+        if system_idx is None:
             self.system_idx = torch.zeros(
                 self.n_atoms, device=self.device, dtype=torch.int64
             )
         else:  # assert that system indices are unique consecutive integers
-            _, counts = torch.unique_consecutive(self.system_idx, return_counts=True)
-            if not torch.all(counts == torch.bincount(self.system_idx)):
+            _, counts = torch.unique_consecutive(system_idx, return_counts=True)
+            if not torch.all(counts == torch.bincount(system_idx)):
                 raise ValueError("System indices must be unique consecutive integers")
 
-        if self.cell.ndim == 2:
+        if self.cell.ndim != 3 and system_idx is None:
             self.cell = self.cell.unsqueeze(0)
 
-        if self.cell.ndim != 3 or self.cell.shape[-2:] != (3, 3):
+        if self.cell.shape[-2:] != (3, 3):
             raise ValueError("Cell must have shape (n_systems, 3, 3)")
 
         if self.cell.shape[0] != self.n_systems:
