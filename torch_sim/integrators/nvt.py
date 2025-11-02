@@ -196,7 +196,7 @@ def nvt_langevin_step(
     return momentum_step(state, dt / 2)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class NVTNoseHooverState(MDState):
     """State information for an NVT system with a Nose-Hoover chain thermostat.
 
