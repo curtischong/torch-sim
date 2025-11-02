@@ -4,14 +4,14 @@ import ast
 import inspect
 import textwrap
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Unpack
 
 import torch
 
-from torch_sim.state import SimState
+from torch_sim.state import SimState, SimStateParams
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, init=False)
 class OptimState(SimState):
     """Unified state class for optimization algorithms.
 
@@ -26,6 +26,17 @@ class OptimState(SimState):
 
     _atom_attributes = SimState._atom_attributes | {"forces"}  # noqa: SLF001
     _system_attributes = SimState._system_attributes | {"energy", "stress"}  # noqa: SLF001
+
+    def __init__(
+        self,
+        *,
+        forces: torch.Tensor,
+        energy: torch.Tensor,
+        stress: torch.Tensor,
+        **kwargs: Unpack[SimStateParams],
+    ):
+        pass
+        # super().__init__(typed_dict_from_init(SimState))
 
 
 @dataclass(kw_only=True)

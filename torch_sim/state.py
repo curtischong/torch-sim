@@ -18,24 +18,13 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypedDict
 import torch
 
 import torch_sim as ts
-from torch_sim.typing import StateLike
+from torch_sim.typing import StateLike, typed_dict_from_init
 
 
 if TYPE_CHECKING:
     from ase import Atoms
     from phonopy.structure.atoms import PhonopyAtoms
     from pymatgen.core import Structure
-
-
-class SimStateParams(TypedDict):
-    """Parameters for initializing a SimState."""
-
-    positions: torch.Tensor
-    masses: torch.Tensor
-    cell: torch.Tensor
-    pbc: bool
-    atomic_numbers: torch.Tensor
-    system_idx: torch.Tensor | None
 
 
 @dataclass(init=False)
@@ -520,7 +509,9 @@ class SimState:
             raise TypeError(msg) from exc
 
         tree = ast.parse(textwrap.dedent(source))
-        base_names = {base.__name__ for base in cls.__mro__[1:] if hasattr(base, "__name__")}
+        base_names = {
+            base.__name__ for base in cls.__mro__[1:] if hasattr(base, "__name__")
+        }
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -536,6 +527,9 @@ class SimState:
         raise TypeError(
             f"{cls.__name__}.__init__ must call super().__init__ (or a parent class __init__)."
         )
+
+
+SimStateParams = typed_dict_from_init(SimState)
 
 
 @dataclass(kw_only=True)
