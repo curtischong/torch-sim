@@ -10,7 +10,7 @@ from torch_sim.models.interface import ModelInterface
 from torch_sim.state import SimState
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MDState(SimState):
     """State information for molecular dynamics simulations.
 
