@@ -364,31 +364,6 @@ class CellOptimState(OptimState):
         "constant_volume",
     }
 
-    def __init__(
-        self,
-        *,
-        reference_cell: torch.Tensor,
-        cell_filter: CellFilterFuncs,
-        cell_factor: torch.Tensor | None = None,
-        pressure: torch.Tensor | None = None,
-        hydrostatic_strain: bool = False,
-        constant_volume: bool = False,
-        cell_positions: torch.Tensor | None = None,
-        cell_forces: torch.Tensor | None = None,
-        cell_masses: torch.Tensor | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(**kwargs)
-        self.reference_cell = reference_cell
-        self.cell_filter = cell_filter
-        self.cell_factor = cell_factor
-        self.pressure = pressure
-        self.hydrostatic_strain = hydrostatic_strain
-        self.constant_volume = constant_volume
-        self.cell_positions = cell_positions
-        self.cell_forces = cell_forces
-        self.cell_masses = cell_masses
-
 
 @dataclass(kw_only=True)
 class CellFireState(CellOptimState, FireState):

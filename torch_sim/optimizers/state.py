@@ -27,23 +27,6 @@ class OptimState(SimState):
     _atom_attributes = SimState._atom_attributes | {"forces"}  # noqa: SLF001
     _system_attributes = SimState._system_attributes | {"energy", "stress"}  # noqa: SLF001
 
-    def __init__(
-        self,
-        *,
-        forces: torch.Tensor,
-        energy: torch.Tensor,
-        stress: torch.Tensor,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(**kwargs)
-        self.forces = forces
-        self.energy = energy
-        self.stress = stress
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        _ensure_init_calls_parent(cls)
-
 
 @dataclass(kw_only=True)
 class FireState(OptimState):
@@ -94,7 +77,10 @@ class _SuperInitCallVisitor(ast.NodeVisitor):
                 if isinstance(func, ast.Name) and func.id == "super":
                     self.found = True
             # Detect direct BaseClass.__init__(...)
-            elif isinstance(node.func.value, ast.Name) and node.func.value.id in self._base_names:
+            elif (
+                isinstance(node.func.value, ast.Name)
+                and node.func.value.id in self._base_names
+            ):
                 self.found = True
         self.generic_visit(node)
 
