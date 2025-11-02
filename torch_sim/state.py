@@ -88,7 +88,7 @@ class SimState:
 
         @property
         def system_idx(self) -> torch.Tensor:
-            """A getter for simstate that tells typecheckers that it's always defined."""
+            """A getter for system_idx that tells type checkers it's always defined."""
             return self.system_idx
 
     _atom_attributes: ClassVar[set[str]] = {
@@ -125,17 +125,17 @@ class SimState:
                 f"masses {shapes[1]}, atomic_numbers {shapes[2]}"
             )
 
-        system_idx = self.system_idx
-        if system_idx is None:
+        initial_system_idx = self.system_idx
+        if initial_system_idx is None:
             self.system_idx = torch.zeros(
                 self.n_atoms, device=self.device, dtype=torch.int64
             )
         else:  # assert that system indices are unique consecutive integers
-            _, counts = torch.unique_consecutive(system_idx, return_counts=True)
-            if not torch.all(counts == torch.bincount(system_idx)):
+            _, counts = torch.unique_consecutive(initial_system_idx, return_counts=True)
+            if not torch.all(counts == torch.bincount(initial_system_idx)):
                 raise ValueError("System indices must be unique consecutive integers")
 
-        if self.cell.ndim != 3 and system_idx is None:
+        if self.cell.ndim != 3 and initial_system_idx is None:
             self.cell = self.cell.unsqueeze(0)
 
         if self.cell.shape[-2:] != (3, 3):
