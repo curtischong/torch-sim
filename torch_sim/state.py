@@ -4,8 +4,11 @@ The main SimState class represents atomistic systems with support for batched
 operations and conversion to/from various atomistic formats.
 """
 
+import ast
 import copy
 import importlib
+import inspect
+import textwrap
 import typing
 from collections import defaultdict
 from collections.abc import Generator, Sequence
@@ -417,6 +420,7 @@ class SimState:
         """
         cls._assert_no_tensor_attributes_can_be_none()
         cls._assert_all_attributes_have_defined_scope()
+        _ensure_init_calls_parent(cls)
         super().__init_subclass__(**kwargs)
 
     @classmethod
@@ -495,6 +499,60 @@ class SimState:
                     f"Attribute '{attr_name}' is not defined in {cls.__name__} in any "
                     "of _atom_attributes, _system_attributes, or _global_attributes"
                 )
+
+
+class _SuperInitCallVisitor(ast.NodeVisitor):
+    """AST visitor that detects calls to parent __init__ implementations."""
+
+    def __init__(self, base_names: set[str]) -> None:
+        self._base_names = base_names
+        self.found = False
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "__init__":
+            # Detect super().__init__(...)
+            if isinstance(node.func.value, ast.Call):
+                func = node.func.value.func
+                if isinstance(func, ast.Name) and func.id == "super":
+                    self.found = True
+            # Detect direct BaseClass.__init__(...)
+            elif (
+                isinstance(node.func.value, ast.Name)
+                and node.func.value.id in self._base_names
+            ):
+                self.found = True
+        self.generic_visit(node)
+
+
+def _ensure_init_calls_parent(cls: type) -> None:
+    """Ensure subclasses define __init__ and call a parent initializer."""
+    if "__init__" not in cls.__dict__:
+        raise TypeError(
+            f"{cls.__name__} must define an __init__ method that calls its parent."
+        )
+
+    init_fn = cls.__dict__["__init__"]
+    if not callable(init_fn):
+        raise TypeError(f"{cls.__name__}.__init__ must be callable.")
+
+    try:
+        source = inspect.getsource(init_fn)
+    except (OSError, TypeError) as exc:
+        msg = (
+            f"Cannot verify that {cls.__name__}.__init__ calls its parent. "
+            "Define __init__ in source code and ensure it invokes super().__init__."
+        )
+        raise TypeError(msg) from exc
+
+    tree = ast.parse(textwrap.dedent(source))
+    base_names = {base.__name__ for base in cls.__mro__[1:] if hasattr(base, "__name__")}
+    visitor = _SuperInitCallVisitor(base_names)
+    visitor.visit(tree)
+
+    if not visitor.found:
+        raise TypeError(
+            f"{cls.__name__}.__init__ must call super().__init__ (or a parent class __init__)."
+        )
 
 
 @dataclass(kw_only=True)
