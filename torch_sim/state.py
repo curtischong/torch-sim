@@ -9,7 +9,7 @@ import importlib
 import typing
 from collections import defaultdict
 from collections.abc import Generator, Sequence
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
 import torch
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from pymatgen.core import Structure
 
 
-@dataclass(init=False)
+@dataclass
 class SimState:
     """State representation for atomistic systems with batched operations support.
 
@@ -82,7 +82,8 @@ class SimState:
     cell: torch.Tensor
     pbc: bool  # TODO: do all calculators support mixed pbc?
     atomic_numbers: torch.Tensor
-    system_idx: torch.Tensor
+    system_idx: InitVar[torch.Tensor | None]
+    _system_idx: torch.Tensor = field(init=False)
 
     _atom_attributes: ClassVar[set[str]] = {
         "positions",
@@ -93,15 +94,7 @@ class SimState:
     _system_attributes: ClassVar[set[str]] = {"cell"}
     _global_attributes: ClassVar[set[str]] = {"pbc"}
 
-    def __init__(
-        self,
-        positions: torch.Tensor,
-        masses: torch.Tensor,
-        cell: torch.Tensor,
-        pbc: bool,  # noqa: FBT001
-        atomic_numbers: torch.Tensor,
-        system_idx: torch.Tensor | None = None,
-    ) -> None:
+    def __post_init__(self, system_idx: torch.Tensor | None) -> None:
         """Initialize the SimState and validate the arguments.
 
         Args:
@@ -114,12 +107,6 @@ class SimState:
                 Has shape (n_atoms,), must be unique consecutive integers starting from 0.
                 If not provided, it is initialized to zeros.
         """
-        self.positions = positions
-        self.masses = masses
-        self.cell = cell
-        self.pbc = pbc
-        self.atomic_numbers = atomic_numbers
-
         # Validate and process the state after initialization.
         # data validation and fill system_idx
         # should make pbc a tensor here
@@ -163,6 +150,14 @@ class SimState:
             raise ValueError(
                 f"Cell must have shape (n_systems, 3, 3), got {self.cell.shape}"
             )
+
+    @property
+    def system_idx(self):
+        return self._system_idx
+
+    @system_idx.setter
+    def system_idx(self, value):
+        self._system_idx = value
 
     @property
     def wrap_positions(self) -> torch.Tensor:
