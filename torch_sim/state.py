@@ -88,6 +88,7 @@ class SimState:
 
         @property
         def system_idx(self) -> torch.Tensor:
+            """A getter for simstate that tells typecheckers that it's always defined."""
             return self.system_idx
 
     _atom_attributes: ClassVar[set[str]] = {
