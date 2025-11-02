@@ -336,7 +336,7 @@ def get_cell_filter(cell_filter: "CellFilter | tuple") -> CellFilterFuncs:
     )
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, init=False)
 class CellOptimState(OptimState):
     """State class for cell optimization."""
 
@@ -363,6 +363,31 @@ class CellOptimState(OptimState):
         "hydrostatic_strain",
         "constant_volume",
     }
+
+    def __init__(
+        self,
+        *,
+        reference_cell: torch.Tensor,
+        cell_filter: CellFilterFuncs,
+        cell_factor: torch.Tensor,
+        pressure: torch.Tensor,
+        hydrostatic_strain: bool,
+        constant_volume: bool,
+        cell_positions: torch.Tensor,
+        cell_forces: torch.Tensor,
+        cell_masses: torch.Tensor,
+        **kwargs: Unpack[SimStateParams],
+    ) -> None:
+        super().__init__(**kwargs)
+        self.reference_cell = kwargs["reference_cell"]
+        self.cell_filter = kwargs["cell_filter"]
+        self.cell_factor = kwargs["cell_factor"]
+        self.pressure = kwargs["pressure"]
+        self.hydrostatic_strain = kwargs["hydrostatic_strain"]
+        self.constant_volume = kwargs["constant_volume"]
+        self.cell_positions = kwargs["cell_positions"]
+        self.cell_forces = kwargs["cell_forces"]
+        self.cell_masses = kwargs["cell_masses"]
 
 
 @dataclass(kw_only=True)

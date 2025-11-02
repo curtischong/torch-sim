@@ -35,8 +35,10 @@ class OptimState(SimState):
         stress: torch.Tensor,
         **kwargs: Unpack[SimStateParams],
     ):
-        pass
-        # super().__init__(typed_dict_from_init(SimState))
+        super().__init__(**kwargs)
+        self.forces = forces
+        self.energy = energy
+        self.stress = stress
 
 
 @dataclass(kw_only=True)
