@@ -6,11 +6,12 @@ operations and conversion to/from various atomistic formats.
 
 import copy
 import importlib
-import typing
 from collections import defaultdict
 from collections.abc import Generator, Sequence
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+from dataclasses import dataclass, fields
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, Type
+
+import typing
 
 import torch
 
@@ -24,7 +25,48 @@ if TYPE_CHECKING:
     from pymatgen.core import Structure
 
 
-@dataclass(init=False)
+SimStateT = typing.TypeVar("SimStateT", bound="SimState")
+
+
+def simstate_dataclass(
+    _cls: type[SimStateT] | None = None, /, **kwargs: Any
+) -> type[SimStateT] | typing.Callable[[type[SimStateT]], type[SimStateT]]:  # noqa: ANN201
+    """A dataclass wrapper that:
+    - Disables auto-generated __repr__
+    - Injects a custom __repr__ that properly prints fields initialized in post-init.
+    """
+    kwargs.setdefault("repr", False)
+
+    def wrap(cls: type[SimStateT]) -> type[SimStateT]:  # noqa: ANN202
+        # Apply dataclass transformation
+        cls = typing.cast(type[SimStateT], dataclass(**kwargs)(cls))
+
+        # Define the unified __repr__ if not explicitly defined
+        def __repr__(self) -> str:  # noqa: N807
+            """Properly print fields."""
+            cls_name = type(self).__name__
+            parts = []
+            for f in fields(self):
+                if not f.repr:
+                    continue
+                name = f.metadata.get("repr_name", f.name)
+                val = getattr(self, f.name)
+                parts.append(f"{name}={val!r}")
+            return f"{cls_name}({', '.join(parts)})"
+
+        # Attach it only if not already present
+        if "__repr__" not in cls.__dict__:
+            cls.__repr__ = __repr__
+
+        return cls
+
+    if _cls is None:
+        return wrap
+
+    return wrap(_cls)
+
+
+@simstate_dataclass(init=False)
 class SimState:
     """State representation for atomistic systems with batched operations support.
 
