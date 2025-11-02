@@ -4,13 +4,16 @@ The main SimState class represents atomistic systems with support for batched
 operations and conversion to/from various atomistic formats.
 """
 
+import ast
 import copy
 import importlib
+import inspect
+import textwrap
 import typing
 from collections import defaultdict
 from collections.abc import Generator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, TypedDict
 
 import torch
 
@@ -22,6 +25,17 @@ if TYPE_CHECKING:
     from ase import Atoms
     from phonopy.structure.atoms import PhonopyAtoms
     from pymatgen.core import Structure
+
+
+class SimStateParams(TypedDict):
+    """Parameters for initializing a SimState."""
+
+    positions: torch.Tensor
+    masses: torch.Tensor
+    cell: torch.Tensor
+    pbc: bool
+    atomic_numbers: torch.Tensor
+    system_idx: torch.Tensor | None
 
 
 @dataclass(init=False)
@@ -406,6 +420,7 @@ class SimState:
         """
         cls._assert_no_tensor_attributes_can_be_none()
         cls._assert_all_attributes_have_defined_scope()
+        cls._assert_init_calls_parent()
         super().__init_subclass__(**kwargs)
 
     @classmethod
@@ -484,6 +499,45 @@ class SimState:
                     f"Attribute '{attr_name}' is not defined in {cls.__name__} in any "
                     "of _atom_attributes, _system_attributes, or _global_attributes"
                 )
+
+    @classmethod
+    def _assert_init_calls_parent(cls) -> None:
+        init_fn = cls.__dict__.get("__init__")
+        if init_fn is None:
+            raise TypeError(
+                f"{cls.__name__} must define an __init__ method that calls its parent."
+            )
+        if not callable(init_fn):
+            raise TypeError(f"{cls.__name__}.__init__ must be callable.")
+
+        try:
+            source = inspect.getsource(init_fn)
+        except (OSError, TypeError) as exc:
+            msg = (
+                f"Cannot verify that {cls.__name__}.__init__ calls its parent. "
+                "Define __init__ in source code and ensure it invokes super().__init__."
+            )
+            raise TypeError(msg) from exc
+
+        tree = ast.parse(textwrap.dedent(source))
+        base_names = {
+            base.__name__ for base in cls.__mro__[1:] if hasattr(base, "__name__")
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Attribute) and func.attr == "__init__":
+                if isinstance(func.value, ast.Call):
+                    maybe_super = func.value.func
+                    if isinstance(maybe_super, ast.Name) and maybe_super.id == "super":
+                        return
+                if isinstance(func.value, ast.Name) and func.value.id in base_names:
+                    return
+
+        raise TypeError(
+            f"{cls.__name__}.__init__ must call super().__init__ (or a parent class __init__)."
+        )
 
 
 @dataclass(kw_only=True)

@@ -1,7 +1,16 @@
 """Types used across TorchSim."""
 
+import inspect
 from enum import StrEnum
-from typing import TYPE_CHECKING, Literal, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    NotRequired,
+    TypedDict,
+    Union,
+    get_type_hints,
+)
 
 import torch
 

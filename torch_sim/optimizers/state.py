@@ -1,13 +1,17 @@
 """Optimizer state classes."""
 
+import ast
+import inspect
+import textwrap
 from dataclasses import dataclass
+from typing import Any, Unpack
 
 import torch
 
-from torch_sim.state import SimState
+from torch_sim.state import SimState, SimStateParams
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, init=False)
 class OptimState(SimState):
     """Unified state class for optimization algorithms.
 
@@ -22,6 +26,19 @@ class OptimState(SimState):
 
     _atom_attributes = SimState._atom_attributes | {"forces"}  # noqa: SLF001
     _system_attributes = SimState._system_attributes | {"energy", "stress"}  # noqa: SLF001
+
+    def __init__(
+        self,
+        *,
+        forces: torch.Tensor,
+        energy: torch.Tensor,
+        stress: torch.Tensor,
+        **kwargs: Unpack[SimStateParams],
+    ):
+        super().__init__(**kwargs)
+        self.forces = forces
+        self.energy = energy
+        self.stress = stress
 
 
 @dataclass(kw_only=True)
@@ -38,6 +55,21 @@ class FireState(OptimState):
 
     _atom_attributes = OptimState._atom_attributes | {"velocities"}  # noqa: SLF001
     _system_attributes = OptimState._system_attributes | {"dt", "alpha", "n_pos"}  # noqa: SLF001
+
+    def __init__(
+        self,
+        *,
+        velocities: torch.Tensor,
+        dt: torch.Tensor,
+        alpha: torch.Tensor,
+        n_pos: torch.Tensor,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.velocities = velocities
+        self.dt = dt
+        self.alpha = alpha
+        self.n_pos = n_pos
 
 
 # there's no GradientDescentState, it's the same as OptimState
