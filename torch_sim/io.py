@@ -369,11 +369,18 @@ def phonopy_to_state(
         torch.arange(len(phonopy_atoms_list), device=device), atoms_per_system
     )
 
+    """
+    NOTE: PhonopyAtoms does not have pbc attribute for Supercells assume True
+    Verify consistent pbc
+    if not all(all(at.pbc) == all(phonopy_atoms_lst[0].pbc) for at in phonopy_atoms_lst):
+        raise ValueError("All systems must have the same periodic boundary conditions")
+    """
+
     return ts.SimState(
         positions=positions,
         masses=masses,
         cell=cell,
-        pbc=True,  # phononpy always assumes periodic boundary conditions https://github.com/phonopy/phonopy/blob/develop/phonopy/structure/atoms.py#L140
+        pbc=True,
         atomic_numbers=atomic_numbers,
         system_idx=system_idx,
     )

@@ -93,7 +93,7 @@ def test_write_state_single(
     assert trajectory.get_array("positions").shape == (1, 10, 3)
     assert trajectory.get_array("atomic_numbers").shape == (1, 10)
     assert trajectory.get_array("cell").shape == (1, 3, 3)
-    assert trajectory.get_array("pbc").shape == (1, 3)
+    assert trajectory.get_array("pbc").shape == (3,)
 
 
 def test_write_state_multiple(
@@ -106,7 +106,7 @@ def test_write_state_multiple(
     assert trajectory.get_array("positions").shape == (2, 10, 3)
     assert trajectory.get_array("atomic_numbers").shape == (1, 10)
     assert trajectory.get_array("cell").shape == (2, 3, 3)
-    assert trajectory.get_array("pbc").shape == (1, 3)
+    assert trajectory.get_array("pbc").shape == (3,)
 
 
 def test_optional_arrays(trajectory: TorchSimTrajectory, random_state: MDState) -> None:
