@@ -637,9 +637,14 @@ class TorchSimTrajectory:
         if name not in self.array_registry:
             raise ValueError(f"Array {name} not found in registry")
 
-        return self._file.root.data.__getitem__(name).read(
+        data = self._file.root.data.__getitem__(name).read(
             start=start, stop=stop, step=step
         )
+
+        if name == "pbc":
+            return np.squeeze(data, axis=0)
+
+        return data
 
     def get_steps(
         self,
@@ -823,11 +828,11 @@ class TorchSimTrajectory:
                 start, stop = frame, frame + 1
             else:  # Static prop
                 start, stop = 0, 1
-            return self.get_array(prop, start=start, stop=stop)[0]
+            return self.get_array(prop, start=start, stop=stop)
 
-        arrays["cell"] = np.expand_dims(return_prop(self, "cell", frame), axis=0)
-        arrays["atomic_numbers"] = return_prop(self, "atomic_numbers", frame)
-        arrays["masses"] = return_prop(self, "masses", frame)
+        arrays["cell"] = np.expand_dims(return_prop(self, "cell", frame), axis=0)[0]
+        arrays["atomic_numbers"] = return_prop(self, "atomic_numbers", frame)[0]
+        arrays["masses"] = return_prop(self, "masses", frame)[0]
         arrays["pbc"] = return_prop(self, "pbc", frame)
 
         return arrays
@@ -920,14 +925,11 @@ class TorchSimTrajectory:
         arrays = self._get_state_arrays(frame)
 
         # Create SimState with required attributes
-        pbc_tensor = torch.tensor(
-            arrays["pbc"], device=device, dtype=torch.bool
-        ).squeeze()
         return SimState(
             positions=torch.tensor(arrays["positions"], device=device, dtype=dtype),
             masses=torch.tensor(arrays.get("masses", None), device=device, dtype=dtype),
             cell=torch.tensor(arrays["cell"], device=device, dtype=dtype),
-            pbc=pbc_tensor,
+            pbc=torch.tensor(arrays["pbc"], device=device, dtype=torch.bool),
             atomic_numbers=torch.tensor(
                 arrays["atomic_numbers"], device=device, dtype=torch.int
             ),

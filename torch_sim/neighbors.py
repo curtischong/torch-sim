@@ -783,9 +783,9 @@ def torch_nl_linked_cell(
         positions (torch.Tensor [n_atom, 3]):
             A tensor containing the positions of atoms wrapped inside
             their respective unit cells.
-        cell (torch.Tensor [3*num_systems, 3]): Unit cell vectors according to
+        cell (torch.Tensor [3*n_systems, 3]): Unit cell vectors according to
             the row vector convention, i.e. `[[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]]`.
-        pbc (torch.Tensor [num_systems, 3] bool):
+        pbc (torch.Tensor [n_systems, 3] bool):
             A tensor indicating the periodic boundary conditions to apply.
             Partial PBC are not supported yet.
         system_idx (torch.Tensor [n_atom,] torch.long):

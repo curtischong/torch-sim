@@ -113,9 +113,7 @@ def inverse_box(box: torch.Tensor) -> torch.Tensor:
 
 @deprecated("Use wrap_positions instead")
 def pbc_wrap_general(
-    positions: torch.Tensor,
-    lattice_vectors: torch.Tensor,
-    pbc: torch.Tensor | bool = True,  # noqa: FBT002
+    positions: torch.Tensor, lattice_vectors: torch.Tensor
 ) -> torch.Tensor:
     """Apply periodic boundary conditions using lattice
         vector transformation method.
@@ -131,16 +129,10 @@ def pbc_wrap_general(
             containing particle positions in real space.
         lattice_vectors (torch.Tensor): Tensor of shape (d, d) containing
             lattice vectors as columns (A matrix in the equations).
-        pbc (torch.Tensor | bool): Boolean tensor of shape (3,) or boolean indicating
-            whether periodic boundary conditions are applied in each dimension.
-            If a boolean is provided, all axes are assumed to have the same periodic
-            boundary conditions.
 
     Returns:
         torch.Tensor: Wrapped positions in real space with same shape as input positions.
     """
-    if isinstance(pbc, bool):
-        pbc = torch.tensor([pbc] * 3)
     # Validate inputs
     if not torch.is_floating_point(positions) or not torch.is_floating_point(
         lattice_vectors
@@ -157,10 +149,7 @@ def pbc_wrap_general(
     frac_coords = positions @ torch.linalg.inv(lattice_vectors).T
 
     # Wrap to reference cell [0,1) using modulo
-    wrapped_frac = frac_coords.clone()
-    wrapped_frac[:, pbc[0]] = frac_coords[:, pbc[0]] % 1.0
-    wrapped_frac[:, pbc[1]] = frac_coords[:, pbc[1]] % 1.0
-    wrapped_frac[:, pbc[2]] = frac_coords[:, pbc[2]] % 1.0
+    wrapped_frac = frac_coords % 1.0
 
     # Transform back to real space: r_row_wrapped = wrapped_f_row @ M_row
     return wrapped_frac @ lattice_vectors.T
@@ -223,9 +212,7 @@ def pbc_wrap_batched(
 
     # Wrap to reference cell [0,1) using modulo
     wrapped_frac = frac_coords.clone()
-    wrapped_frac[:, pbc[0]] = frac_coords[:, pbc[0]] % 1.0
-    wrapped_frac[:, pbc[1]] = frac_coords[:, pbc[1]] % 1.0
-    wrapped_frac[:, pbc[2]] = frac_coords[:, pbc[2]] % 1.0
+    wrapped_frac[:, pbc] = frac_coords[:, pbc] % 1.0
 
     # Transform back to real space: r = A·f
     # Get the cell for each atom based on its system index
@@ -262,7 +249,7 @@ def minimum_image_displacement(
     dr_frac = torch.einsum("ij,...j->...i", cell_inv, dr)
 
     # Apply minimum image convention
-    dr_frac -= torch.round(dr_frac)
+    dr_frac -= torch.where(pbc, torch.round(dr_frac), torch.zeros_like(dr_frac))
 
     # Convert back to cartesian
     return torch.einsum("ij,...j->...i", cell, dr_frac)

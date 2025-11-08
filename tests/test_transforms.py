@@ -894,10 +894,20 @@ def test_get_fractional_coordinates_batched() -> None:
             True,
             [[0.2, 0.0, 0.0], [0.0, 0.2, 0.0], [0.0, 0.0, 0.2]],
         ),
+        (
+            [[2.2, 0.0, 0.0], [0.0, 2.2, 0.0], [0.0, 0.0, 2.2]],
+            torch.eye(3, dtype=DTYPE) * 2.0,
+            torch.tensor([True, False, True], dtype=torch.bool),
+            [[0.2, 0.0, 0.0], [0.0, 2.2, 0.0], [0.0, 0.0, 0.2]],
+        ),
     ],
 )
 def test_minimum_image_displacement(
-    *, dr: list[list[float]], cell: torch.Tensor, pbc: bool, expected: list[list[float]]
+    *,
+    dr: list[list[float]],
+    cell: torch.Tensor,
+    pbc: bool | torch.Tensor,
+    expected: list[list[float]],
 ) -> None:
     """Test minimum_image_displacement with various inputs.
 
