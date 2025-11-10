@@ -109,14 +109,6 @@ class SimState:
 
     def __post_init__(self) -> None:
         """Initialize the SimState and validate the arguments."""
-        # if devices aren't all the same, raise an error, in a clean way
-        devices = {
-            attr: getattr(self, attr).device
-            for attr in ("positions", "masses", "cell", "atomic_numbers")
-        }
-        if len(set(devices.values())) > 1:
-            raise ValueError("All tensors must be on the same device")
-
         # Check that positions, masses and atomic numbers have compatible shapes
         shapes = [
             getattr(self, attr).shape[0]
@@ -132,9 +124,7 @@ class SimState:
         if isinstance(self.pbc, bool):
             self.pbc = [self.pbc] * 3
         if not isinstance(self.pbc, torch.Tensor):
-            self.pbc = torch.tensor(
-                self.pbc, dtype=torch.bool, device=self.positions.device
-            )
+            self.pbc = torch.tensor(self.pbc, dtype=torch.bool, device=self.device)
 
         initial_system_idx = self.system_idx
         if initial_system_idx is None:
@@ -156,6 +146,21 @@ class SimState:
             raise ValueError(
                 f"Cell must have shape (n_systems, 3, 3), got {self.cell.shape}"
             )
+
+        # if devices aren't all the same, raise an error, in a clean way
+        devices = {
+            attr: getattr(self, attr).device
+            for attr in (
+                "positions",
+                "masses",
+                "cell",
+                "atomic_numbers",
+                "pbc",
+                "system_idx",
+            )
+        }
+        if len(set(devices.values())) > 1:
+            raise ValueError("All tensors must be on the same device")
 
     @property
     def wrap_positions(self) -> torch.Tensor:
