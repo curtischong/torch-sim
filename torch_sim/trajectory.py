@@ -512,6 +512,20 @@ class TorchSimTrajectory:
 
         self.flush()
 
+    def write_global_array(self, name: str, array: np.ndarray | torch.Tensor) -> None:
+        """Write a global array to the trajectory file.
+
+        This function is used to write a global array to the trajectory file.
+        """
+        if isinstance(array, torch.Tensor):
+            array = array.cpu().detach().numpy()
+
+        steps = [0]
+        if name not in self.array_registry:
+            self._initialize_array(name, array)
+        self._validate_array(name, array, steps)
+        self._serialize_array(name, array, steps)
+
     def _initialize_array(self, name: str, array: np.ndarray) -> None:
         """Initialize a single array and add it to the registry.
 
@@ -637,14 +651,9 @@ class TorchSimTrajectory:
         if name not in self.array_registry:
             raise ValueError(f"Array {name} not found in registry")
 
-        data = self._file.root.data.__getitem__(name).read(
+        return self._file.root.data.__getitem__(name).read(
             start=start, stop=stop, step=step
         )
-
-        if name == "pbc":
-            return np.squeeze(data, axis=0)
-
-        return data
 
     def get_steps(
         self,
@@ -782,7 +791,7 @@ class TorchSimTrajectory:
             self.write_arrays({"atomic_numbers": state[0].atomic_numbers}, 0)
 
         if "pbc" not in self.array_registry:
-            self.write_arrays({"pbc": state[0].pbc}, 0)
+            self.write_global_array("pbc", state[0].pbc)
 
         # Write all arrays to file
         self.write_arrays(data, steps)
@@ -824,15 +833,17 @@ class TorchSimTrajectory:
         arrays["positions"] = self.get_array("positions", start=frame, stop=frame + 1)[0]
 
         def return_prop(self: Self, prop: str, frame: int) -> np.ndarray:
+            if prop == "pbc":
+                return self.get_array(prop, start=0, stop=3)
             if getattr(self._file.root.data, prop).shape[0] > 1:  # Variable prop
                 start, stop = frame, frame + 1
             else:  # Static prop
                 start, stop = 0, 1
-            return self.get_array(prop, start=start, stop=stop)
+            return self.get_array(prop, start=start, stop=stop)[0]
 
-        arrays["cell"] = np.expand_dims(return_prop(self, "cell", frame), axis=0)[0]
-        arrays["atomic_numbers"] = return_prop(self, "atomic_numbers", frame)[0]
-        arrays["masses"] = return_prop(self, "masses", frame)[0]
+        arrays["cell"] = np.expand_dims(return_prop(self, "cell", frame), axis=0)
+        arrays["atomic_numbers"] = return_prop(self, "atomic_numbers", frame)
+        arrays["masses"] = return_prop(self, "masses", frame)
         arrays["pbc"] = return_prop(self, "pbc", frame)
 
         return arrays

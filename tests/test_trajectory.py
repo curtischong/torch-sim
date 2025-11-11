@@ -33,7 +33,7 @@ def random_state() -> MDState:
         cell=torch.unsqueeze(torch.eye(3) * 10.0, 0),
         atomic_numbers=torch.ones(10, dtype=torch.int32),
         system_idx=torch.zeros(10, dtype=torch.int32),
-        pbc=True,
+        pbc=[True, True, False],
     )
 
 
@@ -473,6 +473,7 @@ def test_get_state(trajectory: TorchSimTrajectory, random_state: MDState) -> Non
         assert state.positions.dtype == expected_dtype
         assert state.cell.dtype == expected_dtype
         assert state.atomic_numbers.dtype == torch.int  # Should always be int
+        assert state.pbc.dtype == torch.bool  # Should always be bool
 
         # Test values (convert to CPU for comparison)
         np.testing.assert_allclose(state.positions, random_state.positions)
@@ -509,7 +510,7 @@ def test_write_ase_trajectory(
         np.testing.assert_allclose(
             atoms.get_atomic_numbers(), random_state.atomic_numbers.numpy()
         )
-        np.testing.assert_array_equal(atoms.pbc, random_state.pbc.numpy()[0])
+        np.testing.assert_array_equal(atoms.pbc, random_state.pbc.numpy())
 
     # Clean up
     ase_traj.close()
