@@ -373,7 +373,7 @@ def simulation(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # Create the simulation environment.
     box_size = box_size_at_packing_fraction(diameter, packing_fraction)
-    cell = torch.eye(2) * box_size
+    cell = torch.eye(3) * box_size
     # Create the energy function.
     sigma = species_sigma(diameter)
     model = SoftSphereMultiModel(sigma_matrix=sigma, species=species)
@@ -477,7 +477,7 @@ def short_simulation(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     diameter = diameter.requires_grad_(True)
     box_size = box_size_at_packing_fraction(diameter, packing_fraction)
-    cell = torch.eye(2) * box_size
+    cell = torch.eye(3) * box_size
     # Create the energy function.
     sigma = species_sigma(diameter)
     model = SoftSphereMultiModel(sigma_matrix=sigma, species=species)
