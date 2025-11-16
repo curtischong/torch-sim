@@ -381,7 +381,7 @@ def simulation(
     # Randomly initialize the system.
     # Fix seed for reproducible random positions
     torch.manual_seed(seed)
-    R = torch.rand(N, 2) * box_size
+    R = torch.rand(N, 3) * box_size
 
     # Minimize to the nearest minimum.
     init_fn, apply_fn = gradient_descent(model, lr=0.1)
@@ -424,7 +424,7 @@ diameters = torch.linspace(0.4, 1.0, 10)
 seeds = torch.arange(1, 6)
 box_size_tensor = torch.zeros(len(diameters), len(seeds))
 raft_energy_tensor = torch.zeros(len(diameters), len(seeds))
-bubble_positions_tensor = torch.zeros(len(diameters), len(seeds), N, 2)
+bubble_positions_tensor = torch.zeros(len(diameters), len(seeds), N, 3)
 for i, d in enumerate(diameters):
     for j, s in enumerate(seeds):
         box_size, raft_energy, bubble_positions = simulation(d, s)
