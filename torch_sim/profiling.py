@@ -62,21 +62,52 @@ class ProfilerConfig:
         record_shapes: Whether to record tensor shapes.
         profile_memory: Whether to profile memory allocations.
         with_stack: Whether to record stack traces. Enables better flame graphs
-            but adds overhead.
+            but adds overhead and can create very large trace files.
         with_flops: Whether to estimate FLOPs for operators.
         with_modules: Whether to record module hierarchy.
         row_limit: Number of rows to show in printed table output.
+
+    Note:
+        The default configuration disables stack traces to keep trace files
+        manageable. Use `ProfilerConfig.detailed()` for full stack traces
+        (warning: can produce 100MB+ files with torch.compile).
     """
 
     activities: list[ProfilerActivity] = field(
         default_factory=lambda: [ProfilerActivity.CPU, ProfilerActivity.CUDA]
     )
     record_shapes: bool = True
-    profile_memory: bool = True
-    with_stack: bool = True
-    with_flops: bool = True
+    profile_memory: bool = False
+    with_stack: bool = False
+    with_flops: bool = False
     with_modules: bool = True
     row_limit: int = 20
+
+    @classmethod
+    def lightweight(cls) -> ProfilerConfig:
+        """Minimal profiling config for quick analysis with small trace files."""
+        return cls(
+            record_shapes=False,
+            profile_memory=False,
+            with_stack=False,
+            with_flops=False,
+            with_modules=False,
+        )
+
+    @classmethod
+    def detailed(cls) -> ProfilerConfig:
+        """Full profiling config with stack traces for detailed flame graphs.
+
+        Warning: Can produce very large trace files (100MB+), especially with
+        torch.compile. Use for short runs or when you need full call stacks.
+        """
+        return cls(
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True,
+            with_flops=True,
+            with_modules=True,
+        )
 
 
 class Profiler:

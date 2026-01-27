@@ -7,7 +7,7 @@ This script demonstrates how to use the profiling utilities to:
 """
 
 # /// script
-# dependencies = []
+# dependencies = ["ase"]
 # ///
 
 import os
@@ -18,7 +18,7 @@ from ase.build import bulk
 
 import torch_sim as ts
 from torch_sim.models.lennard_jones import LennardJonesModel
-from torch_sim.profiling import Profiler, profiling_section
+from torch_sim.profiling import Profiler, ProfilerConfig, profiling_section
 
 
 # Set up the device and data type
@@ -61,7 +61,7 @@ print(f"Output directory: {OUTPUT_DIR}")
 
 with Profiler("fire_optimization", output_dir=OUTPUT_DIR) as prof:
     opt_state = ts.fire_init(state=state, model=lj_model, dt_start=0.005)
-    for step in range(N_steps):
+    for _step in range(N_steps):
         opt_state = ts.fire_step(state=opt_state, model=lj_model, dt_max=0.01)
 
 print(f"\nProfile saved to: {prof.trace_path}")
@@ -109,32 +109,29 @@ print("\nLabeled sections will appear as named regions in the flame graph.")
 
 
 # ============================================================================
-# SECTION 3: Comparing Different Configurations
+# SECTION 3: Detailed Profiling (larger trace files)
 # ============================================================================
 print("\n" + "=" * 70)
-print("SECTION 3: Profile Memory Usage")
+print("SECTION 3: Detailed Profiling with Memory and Stack Traces")
 print("=" * 70)
 
-from torch_sim.profiling import ProfilerConfig
-
-# Configure profiler to track memory
-config = ProfilerConfig(
-    profile_memory=True,
-    with_stack=True,  # Enable for better flame graphs
-    with_flops=True,  # Estimate FLOPs
-)
+# Use the detailed config for full stack traces and memory profiling.
+# Note: This creates larger trace files. For quick analysis, use the default
+# config or ProfilerConfig.lightweight()
+config = ProfilerConfig.detailed()
 
 state = ts.io.atoms_to_state(atoms, device=device, dtype=dtype)
 state.positions = state.positions + 0.1 * torch.randn_like(state.positions)
 
-print("\nProfiling with memory tracking enabled...")
+print("\nProfiling with detailed config (memory + stack traces)...")
+print("Note: This creates larger trace files for more detailed flame graphs.")
 
-with Profiler("memory_profile", output_dir=OUTPUT_DIR, config=config) as prof:
+with Profiler("detailed_profile", output_dir=OUTPUT_DIR, config=config) as prof:
     opt_state = ts.fire_init(state=state, model=lj_model, dt_start=0.005)
-    for step in range(N_steps):
+    for _step in range(N_steps):
         opt_state = ts.fire_step(state=opt_state, model=lj_model, dt_max=0.01)
 
-print(f"\nMemory profile saved to: {prof.trace_path}")
+print(f"\nDetailed profile saved to: {prof.trace_path}")
 
 # Show memory usage summary
 print("\n--- Memory Usage Summary ---")
