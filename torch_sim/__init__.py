@@ -16,6 +16,7 @@ from torch_sim import (
     monte_carlo,
     neighbors,
     optimizers,
+    profiling,
     quantities,
     runners,
     state,
@@ -85,6 +86,7 @@ from torch_sim.runners import (
 )
 from torch_sim.state import SimState, concatenate_states, initialize_state
 from torch_sim.trajectory import TorchSimTrajectory, TrajectoryReporter
+from torch_sim.profiling import Profiler, ProfilerConfig, profile_run, profiling_section
 
 
 PKG_DIR = os.path.dirname(__file__)
