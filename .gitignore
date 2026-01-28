@@ -40,3 +40,4 @@ uv.lock
 
 # IDE
 .vscode/
+profiler_trace*

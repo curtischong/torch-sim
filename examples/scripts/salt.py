@@ -61,17 +61,53 @@ def make_speed_figure(
     return fig
 
 
+# def load_mace_mpa_model(device: torch.device) -> tuple[torch.nn.Module, str, int]:
+#     """Load MACE-MPA model via mace-mp and wrap for torch_sim (no atlas)."""
+#     loaded_model = mace_mp(
+#         model=MaceUrls.mace_mpa_medium,
+#         return_raw_model=True,
+#         default_dtype="float64",
+#         device=str(device),
+#     )
+
+#     model = MaceModel(
+#         model=typing.cast(torch.nn.Module, loaded_model),
+#         device=device,
+#         compute_forces=True,
+#         compute_stress=True,
+#         dtype=torch.float64,
+#         enable_cueq=False,
+#     )
+
+#     return model, MEMORY_SCALES_WITH, MAX_MEMORY_SCALER
+
 def load_mace_mpa_model(device: torch.device) -> tuple[torch.nn.Module, str, int]:
-    """Load MACE-MPA model via mace-mp and wrap for torch_sim (no atlas)."""
+    """
+    Load MACE-MPA model and apply AOT (Ahead-of-Time) compilation 
+    to prevent on-the-fly overhead during timing.
+    """
+    # 1. Load the raw model
     loaded_model = mace_mp(
         model=MaceUrls.mace_mpa_medium,
         return_raw_model=True,
         default_dtype="float64",
         device=str(device),
     )
+    raw_model = typing.cast(torch.nn.Module, loaded_model)
 
+    # 2. Pre-compile the model
+    # 'reduce-overhead' is ideal for static-ish workloads as it uses CUDA Graphs.
+    # 'dynamic=True' ensures that changing n_structures doesn't trigger a re-compile.
+    print("Pre-compiling MACE model with torch.compile...")
+    compiled_model = torch.compile(
+        raw_model, 
+        mode="reduce-overhead", 
+        dynamic=True
+    )
+
+    # 3. Wrap in TorchSim model container
     model = MaceModel(
-        model=typing.cast(torch.nn.Module, loaded_model),
+        model=compiled_model,
         device=device,
         compute_forces=True,
         compute_stress=True,
@@ -154,9 +190,9 @@ if __name__ == "__main__":
 
     with profile(
         activities=activities,
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True,
+        record_shapes=False,
+        profile_memory=False,
+        with_stack=False,
     ) as prof:
         for _ in range(iterations):
             print("Iteration", _ + 1)
@@ -221,8 +257,8 @@ if __name__ == "__main__":
     #     print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=30))
 
     # Export Chrome trace for detailed visualization
-    prof.export_chrome_trace("profiler_trace.json")
-    print("\nProfiler trace exported to profiler_trace.json")
+    prof.export_chrome_trace("profiler_trace2.json")
+    print("\nProfiler trace exported to profiler_trace2.json")
 
     # # Plot ASE and TorchSim curves for the latest iteration
     # n_per_iter = len(n_structures_list)
