@@ -254,4 +254,4 @@ class FairChemModel(ModelInterface):
                 stress = stress.view(-1, 3, 3)
             results["stress"] = stress
 
-        return results
+        return {k: v.detach() for k, v in results.items()}

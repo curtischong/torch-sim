@@ -425,10 +425,10 @@ class FairChemV1Model(ModelInterface):
         ):
             data_list.append(
                 Data(
-                    pos=sim_state.positions[c - n : c].clone(),
-                    cell=sim_state.row_vector_cell[idx, None].clone(),
-                    atomic_numbers=sim_state.atomic_numbers[c - n : c].clone(),
-                    fixed=fixed[c - n : c].clone(),
+                    pos=sim_state.positions[c - n : c].detach().clone(),
+                    cell=sim_state.row_vector_cell[idx, None].detach().clone(),
+                    atomic_numbers=sim_state.atomic_numbers[c - n : c].detach().clone(),
+                    fixed=fixed[c - n : c].detach().clone(),
                     natoms=n,
                     pbc=sim_state.pbc,
                 )
@@ -449,9 +449,9 @@ class FairChemV1Model(ModelInterface):
             _pred = predictions[key]
             if key in self._reshaped_props:
                 _pred = _pred.reshape(self._reshaped_props.get(key)).squeeze()
-            results[key] = _pred.detach()
+            results[key] = _pred
 
         results["energy"] = results["energy"].squeeze(dim=1)
         if results.get("stress") is not None and len(results["stress"].shape) == 2:
             results["stress"] = results["stress"].unsqueeze(dim=0)
-        return results
+        return {k: v.detach() for k, v in results.items()}

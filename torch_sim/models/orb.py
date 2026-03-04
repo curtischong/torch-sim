@@ -466,4 +466,4 @@ class OrbModel(ModelInterface):
                 torch.atleast_2d(results["stress"])
             )
 
-        return results
+        return {k: v.detach() for k, v in results.items()}
