@@ -1096,25 +1096,26 @@ def test_optimizer_batch_consistency(
     lj_model: ModelInterface,
 ) -> None:
     """Test batched optimizer is consistent with individual optimizations."""
-    generator = torch.Generator(device=ar_supercell_sim_state.device)
-
     # Create two distinct initial states by cloning and perturbing
     state1_orig = ar_supercell_sim_state.clone()
+    state1_orig.rng = 0
 
     # Apply identical perturbations to state1_orig
     # for state_item in [state1_orig, state2_orig]: # Old loop structure
-    generator.manual_seed(43)  # Reset seed for positions
     state1_orig.positions += (
         torch.randn(
-            state1_orig.positions.shape, device=state1_orig.device, generator=generator
+            state1_orig.positions.shape,
+            device=state1_orig.device,
+            generator=state1_orig.rng,
         )
         * 0.1
     )
     if filter_func:
-        generator.manual_seed(44)  # Reset seed for cell
         state1_orig.cell += (
             torch.randn(
-                state1_orig.cell.shape, device=state1_orig.device, generator=generator
+                state1_orig.cell.shape,
+                device=state1_orig.device,
+                generator=state1_orig.rng,
             )
             * 0.01
         )
@@ -1177,7 +1178,7 @@ def test_optimizer_batch_consistency(
     # Converge when all batch energies have converged
     while not torch.allclose(e_current_batch, e_prev_batch, atol=1e-6):
         e_prev_batch = e_current_batch.clone()
-        batch_opt_state = step_fn_batch(model=lj_model, state=batch_opt_state)
+        batch_opt_state = step_fn_batch(model=lj_model, state=batch_opt_state, dt_max=0.3)
         e_current_batch = batch_opt_state.energy.clone()
         steps_batch += 1
         if steps_batch > 1000:
