@@ -12,16 +12,14 @@ import torch
 try:
     from vesin import NeighborList as VesinNeighborList
 except ImportError:
-    VesinNeighborList = None
-
-# Try to import torch version (may not exist in all vesin versions)
+    VesinNeighborList = None  # ty:ignore[invalid-assignment]
 try:
     from vesin.torch import NeighborList as VesinNeighborListTorch
 except ImportError:
-    # vesin.torch may not exist - use regular NeighborList for torch compatibility
-    VesinNeighborListTorch = VesinNeighborList
+    VesinNeighborListTorch = None  # ty:ignore[invalid-assignment]
 
 VESIN_AVAILABLE = VesinNeighborList is not None
+VESIN_TORCH_AVAILABLE = VesinNeighborListTorch is not None
 
 
 if VESIN_AVAILABLE:
@@ -74,7 +72,10 @@ if VESIN_AVAILABLE:
         from torch_sim.neighbors import _normalize_inputs
 
         if VesinNeighborListTorch is None:
-            raise RuntimeError("vesin package is not installed")
+            raise RuntimeError(
+                "vesin.torch is not available. "
+                "Install it with: [uv] pip install vesin[torch]"
+            )
         device = positions.device
         dtype = positions.dtype
         n_systems = int(system_idx.max().item()) + 1
@@ -199,7 +200,9 @@ if VESIN_AVAILABLE:
         from torch_sim.neighbors import _normalize_inputs
 
         if VesinNeighborList is None:
-            raise RuntimeError("vesin package is not installed")
+            raise RuntimeError(
+                "vesin is not installed. Install it with: [uv] pip install vesin"
+            )
         device = positions.device
         dtype = positions.dtype
         n_systems = int(system_idx.max().item()) + 1
