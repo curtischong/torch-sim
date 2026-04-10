@@ -485,7 +485,8 @@ def npt_langevin_anisotropic_init(
         warnings.warn(msg, UserWarning, stacklevel=3)
         logger.warning(msg)
 
-    return NPTLangevinAnisotropicState.from_state(
+    # Create the initial state
+    npt_state = NPTLangevinAnisotropicState.from_state(
         state,
         momenta=momenta,
         energy=model_output["energy"],
@@ -499,6 +500,8 @@ def npt_langevin_anisotropic_init(
         cell_masses=cell_masses,
         cell_alpha=cell_alpha,
     )
+    npt_state.store_model_extras(model_output)
+    return npt_state
 
 
 @dcite("10.1063/1.4901303")
@@ -615,6 +618,7 @@ def npt_langevin_anisotropic_step(
     state.energy = model_output["energy"]
     state.forces = model_output["forces"]
     state.stress = model_output["stress"]
+    state.store_model_extras(model_output)
 
     # Updated strain force
     F_eps_new = _npt_langevin_anisotropic_compute_cell_force(
@@ -957,7 +961,7 @@ def npt_langevin_isotropic_init(
         warnings.warn(msg, UserWarning, stacklevel=3)
         logger.warning(msg)
 
-    return NPTLangevinIsotropicState.from_state(
+    npt_state = NPTLangevinIsotropicState.from_state(
         state,
         momenta=momenta,
         energy=model_output["energy"],
@@ -971,6 +975,8 @@ def npt_langevin_isotropic_init(
         cell_masses=cell_masses,
         cell_alpha=cell_alpha,
     )
+    npt_state.store_model_extras(model_output)
+    return npt_state
 
 
 @dcite("10.1063/1.4901303")
@@ -1069,6 +1075,7 @@ def npt_langevin_isotropic_step(
     state.energy = model_output["energy"]
     state.forces = model_output["forces"]
     state.stress = model_output["stress"]
+    state.store_model_extras(model_output)
 
     # Compute updated strain force
     F_eps_new = _compute_isotropic_cell_force(
@@ -1620,6 +1627,7 @@ def _npt_nose_hoover_isotropic_inner_step(
     state.forces = model_output["forces"]
     state.stress = model_output["stress"]
     state.energy = model_output["energy"]
+    state.store_model_extras(model_output)
     state.cell_position = cell_position
     state.cell_momentum = cell_momentum
     state.cell_mass = cell_mass
@@ -1774,7 +1782,7 @@ def npt_nose_hoover_isotropic_init(
         logger.warning(msg)
 
     # Create initial state
-    return NPTNoseHooverIsotropicState.from_state(
+    npt_state = NPTNoseHooverIsotropicState.from_state(
         state,
         momenta=momenta,
         energy=energy,
@@ -1790,6 +1798,8 @@ def npt_nose_hoover_isotropic_init(
         barostat_fns=barostat_fns,
         thermostat_fns=thermostat_fns,
     )
+    npt_state.store_model_extras(model_output)
+    return npt_state
 
 
 @dcite("10.1080/00268979600100761")
@@ -2616,6 +2626,7 @@ def npt_crescale_triclinic_step(
     state.forces = model_output["forces"]
     state.energy = model_output["energy"]
     state.stress = model_output["stress"]
+    state.store_model_extras(model_output)
 
     # Final momentum step
     state = momentum_step(state, dt_tensor / 2)
@@ -2691,6 +2702,7 @@ def npt_crescale_anisotropic_step(
     state.forces = model_output["forces"]
     state.energy = model_output["energy"]
     state.stress = model_output["stress"]
+    state.store_model_extras(model_output)
 
     # Final momentum step
     state = momentum_step(state, dt / 2)
@@ -2767,6 +2779,7 @@ def npt_crescale_triclinic_average_step(
     state.forces = model_output["forces"]
     state.energy = model_output["energy"]
     state.stress = model_output["stress"]
+    state.store_model_extras(model_output)
 
     # Final momentum step
     state = momentum_step(state, dt / 2)
@@ -2874,6 +2887,7 @@ def npt_crescale_isotropic_step(
     state.forces = model_output["forces"]
     state.energy = model_output["energy"]
     state.stress = model_output["stress"]
+    state.store_model_extras(model_output)
 
     # Final momentum step
     state = momentum_step(state, dt / 2)
@@ -2951,7 +2965,7 @@ def npt_crescale_init(
     initial_volume = torch.det(initial_cell)
 
     # Create the initial state
-    return NPTCRescaleState.from_state(
+    npt_state = NPTCRescaleState.from_state(
         state,
         momenta=momenta,
         energy=model_output["energy"],
@@ -2963,3 +2977,5 @@ def npt_crescale_init(
         initial_cell_inv=initial_cell_inv,
         initial_volume=initial_volume,
     )
+    npt_state.store_model_extras(model_output)
+    return npt_state

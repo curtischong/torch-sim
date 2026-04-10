@@ -126,12 +126,14 @@ def nvt_langevin_init(
             kT,
             state.rng,
         )
-    return MDState.from_state(
+    md_state = MDState.from_state(
         state,
         momenta=momenta,
         energy=model_output["energy"],
         forces=model_output["forces"],
     )
+    md_state.store_model_extras(model_output)
+    return md_state
 
 
 @dcite("10.1098/rspa.2016.0138")
@@ -228,6 +230,7 @@ def nvt_langevin_step(
     model_output = model(state)
     state.energy = model_output["energy"]
     state.forces = model_output["forces"]
+    state.store_model_extras(model_output)
 
     return momentum_step(state, dt_tensor / 2)
 
@@ -356,7 +359,7 @@ def nvt_nose_hoover_init(
     dof_per_system = state.get_number_of_degrees_of_freedom() - 3
 
     # Initialize state
-    return NVTNoseHooverState.from_state(
+    nh_state = NVTNoseHooverState.from_state(
         state,
         momenta=momenta,
         energy=model_output["energy"],
@@ -365,6 +368,8 @@ def nvt_nose_hoover_init(
         chain=chain_fns.initialize(dof_per_system, KE, kT_tensor),
         _chain_fns=chain_fns,
     )
+    nh_state.store_model_extras(model_output)
+    return nh_state
 
 
 @dcite("10.1080/00268979600100761")
@@ -689,12 +694,14 @@ def nvt_vrescale_init(
             state.rng,
         )
 
-    return NVTVRescaleState.from_state(
+    vr_state = NVTVRescaleState.from_state(
         state,
         momenta=momenta,
         energy=model_output["energy"],
         forces=model_output["forces"],
     )
+    vr_state.store_model_extras(model_output)
+    return vr_state
 
 
 @dcite("10.1063/1.2408420")

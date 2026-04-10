@@ -304,8 +304,8 @@ class MaceModel(ModelInterface):
             edge_index=edge_index,
             unit_shifts=unit_shifts,
             shifts=shifts,
-            total_charge=state.charge,
-            total_spin=state.spin,
+            total_charge=getattr(state, "charge", None),
+            total_spin=getattr(state, "spin", None),
         )
 
         # Get model output
@@ -335,6 +335,13 @@ class MaceModel(ModelInterface):
             stress = out["stress"]
             if stress is not None:
                 results["stress"] = stress.detach()
+
+        # Propagate additional model outputs (e.g. dipole, charges, etc.)
+        for key, val in out.items():
+            if key not in ("energy", "forces", "stress") and isinstance(
+                val, torch.Tensor
+            ):
+                results[key] = val.detach()
 
         return results
 

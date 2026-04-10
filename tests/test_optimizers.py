@@ -1464,8 +1464,13 @@ def test_optimizer_preserves_charge_spin(
     original_spin = torch.tensor(
         [6.0], device=ar_supercell_sim_state.device, dtype=ar_supercell_sim_state.dtype
     )
-    ar_supercell_sim_state.charge = original_charge.clone()
-    ar_supercell_sim_state.spin = original_spin.clone()
+
+    ar_supercell_sim_state.store_model_extras(
+        {
+            "charge": original_charge.clone(),
+            "spin": original_spin.clone(),
+        }
+    )
 
     init_fn, step_fn = ts.OPTIM_REGISTRY[optimizer_fn]
     opt_state = init_fn(
