@@ -8,9 +8,11 @@ import torch
 import torch_sim as ts
 from torch_sim._duecredit import dcite
 from torch_sim.integrators.md import (
+    InverseTimeArg,
     MDState,
     NoseHooverChain,
     NoseHooverChainFns,
+    TimeArg,
     construct_nose_hoover_chain,
     initialize_momenta,
     momentum_step,
@@ -143,7 +145,7 @@ def nvt_langevin_step(
     *,
     dt: float | torch.Tensor,
     kT: float | torch.Tensor,
-    gamma: float | torch.Tensor | None = None,
+    gamma: InverseTimeArg = None,
 ) -> MDState:
     r"""Perform one complete Langevin dynamics integration step using the BAOAB scheme.
 
@@ -291,7 +293,7 @@ def nvt_nose_hoover_init(
     *,
     kT: float | torch.Tensor,
     dt: float | torch.Tensor,
-    tau: float | torch.Tensor | None = None,
+    tau: TimeArg = None,
     chain_length: int = 3,
     chain_steps: int = 3,
     sy_steps: int = 3,
@@ -711,7 +713,7 @@ def nvt_vrescale_step(
     *,
     dt: float | torch.Tensor,
     kT: float | torch.Tensor,
-    tau: float | torch.Tensor | None = None,
+    tau: TimeArg = None,
 ) -> NVTVRescaleState:
     r"""Perform one complete V-Rescale (CSVR) dynamics integration step.
 

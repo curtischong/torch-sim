@@ -4,6 +4,7 @@ import logging
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Annotated
 
 import torch
 
@@ -15,6 +16,13 @@ from torch_sim.units import MetalUnits
 
 
 logger = logging.getLogger(__name__)
+
+
+# The metadata is the factor that converts the kwarg to internal units
+TimeArg = Annotated[float | torch.Tensor | None, MetalUnits.time]
+InverseTimeArg = Annotated[float | torch.Tensor | None, 1 / MetalUnits.time]
+PressureArg = Annotated[float | torch.Tensor, MetalUnits.pressure]
+InversePressureArg = Annotated[float | torch.Tensor | None, 1 / MetalUnits.pressure]
 
 
 @dataclass(kw_only=True)
