@@ -11,6 +11,8 @@ Setup mirrors the report:
   - dt = 2 fs, thermostat damping tau = 200 fs
   - 200 warmup + 1000 measured steps
   - SevenNet (mf-ompa checkpoint, modal="omat24"); optional D3(BJ)-PBE
+
+uv run --with tad-dftd3 python repro_579.py --strain 0.22 --warmup 0 --steps 300
 """
 
 from __future__ import annotations
