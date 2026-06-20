@@ -108,6 +108,37 @@ def test_integrate_double_nvt(
     assert not torch.isnan(final_state.energy).any()
 
 
+def test_nonfinite_systems_partial_batch(ar_double_sim_state: SimState) -> None:
+    """Per-system non-finite detection flags only the diverged system (issue #579)."""
+
+    class NaNOneSystem(LennardJonesModel):
+        """LJ wrapper that injects NaN into the forces of system index 1."""
+
+        def forward(self, state: SimState, **kwargs: object) -> dict:
+            out = super().forward(state, **kwargs)
+            out["forces"] = out["forces"].clone()
+            out["forces"][state.system_idx == 1] = float("nan")
+            return out
+
+    nan_model = NaNOneSystem(device=DEVICE, dtype=DTYPE)
+    init = ts.integrators.nvt_langevin_init(
+        ar_double_sim_state, nan_model, kT=100.0 * ts.units.MetalUnits.temperature,
+        dt=0.001,
+    )
+    mask = ts.runners.nonfinite_systems(init)
+    assert mask.tolist() == [False, True]
+
+    with pytest.warns(UserWarning, match=r"non-finite.*system\(s\) \[1\]"):
+        ts.integrate(
+            system=ar_double_sim_state,
+            model=nan_model,
+            integrator=ts.Integrator.nvt_langevin,
+            n_steps=3,
+            temperature=100.0,
+            timestep=0.001,
+        )
+
+
 def test_integrate_double_nvt_multiple_temperatures(
     ar_double_sim_state: SimState, lj_model: LennardJonesModel
 ) -> None:

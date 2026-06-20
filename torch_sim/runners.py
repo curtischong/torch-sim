@@ -249,7 +249,31 @@ def _write_initial_state(
             trajectory_reporter.report(state, 0, model=model)
 
 
-def integrate[T: SimState](  # noqa: C901
+def nonfinite_systems(state: MDState) -> torch.Tensor:
+    """Flag systems whose dynamical state has gone non-finite (NaN/Inf).
+
+    A system is flagged if any of its per-atom positions, momenta, or forces, or
+    its per-system energy contain NaN or Inf. Used to surface diverging
+    trajectories in batched MD rather than silently returning partial-batch NaNs.
+
+    Args:
+        state (MDState): Batched MD state to inspect.
+
+    Returns:
+        torch.Tensor: Boolean mask of shape ``[n_systems]``, ``True`` where the
+        system is non-finite.
+    """
+    bad_atom = ~(
+        torch.isfinite(state.positions).all(dim=-1)
+        & torch.isfinite(state.momenta).all(dim=-1)
+        & torch.isfinite(state.forces).all(dim=-1)
+    )
+    bad = ~torch.isfinite(state.energy)
+    bad[state.system_idx[bad_atom]] = True
+    return bad
+
+
+def integrate[T: SimState](  # noqa: C901, PLR0915
     system: StateLike,
     model: ModelInterface,
     *,
@@ -372,6 +396,7 @@ def integrate[T: SimState](  # noqa: C901
             "desc", f"Batch systems {system_indices}" if system_indices else "Integrate"
         )
         inner_pbar_kwargs.setdefault("leave", False)
+        nan_warned = False
         for step in tqdm(
             range(initial_step, initial_step + n_steps), **inner_pbar_kwargs
         ):
@@ -382,6 +407,25 @@ def integrate[T: SimState](  # noqa: C901
                 kT=batch_kT[step - initial_step],
                 **integrator_kwargs,
             )
+
+            if not nan_warned:
+                bad = nonfinite_systems(state)
+                if bad.any():
+                    bad_local = bad.nonzero().flatten().tolist()
+                    bad_global = (
+                        [system_indices[i] for i in bad_local]
+                        if system_indices
+                        else bad_local
+                    )
+                    warnings.warn(
+                        f"integrate: non-finite (NaN/Inf) state detected at step "
+                        f"{step} in system(s) {bad_global}. These trajectories have "
+                        "diverged; their returned energy/temperature/positions are "
+                        "invalid. Consider a smaller timestep or relaxing the "
+                        "initial structures.",
+                        stacklevel=2,
+                    )
+                    nan_warned = True
 
             if trajectory_reporter:
                 trajectory_reporter.report(state, step, model=model)
