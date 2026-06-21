@@ -330,6 +330,16 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
     kTs = kTs * unit_system.temperature
     dt = torch.as_tensor(timestep * unit_system.time, dtype=dtype, device=device)
 
+    # `timestep` is converted to internal units above; any relaxation TIME passed to
+    # the integrator init (Nose-Hoover thermostat `tau`, barostat `b_tau`) must be
+    # converted with the same factor, otherwise it is interpreted in internal units
+    # (~98x too small for metal) -- an over-stiff thermostat that diverges on force
+    # spikes where a correctly-scaled one stays finite (see issue #579).
+    init_kwargs = dict(init_kwargs or {})
+    for time_key in ("tau", "b_tau"):
+        if init_kwargs.get(time_key) is not None:
+            init_kwargs[time_key] = init_kwargs[time_key] * unit_system.time
+
     # Handle both string names and direct function tuples
     if isinstance(integrator, Integrator):
         init_func, step_func = INTEGRATOR_REGISTRY[integrator]
@@ -376,7 +386,7 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
             kTs[:, system_indices] if (system_indices and len(kTs.shape) == 2) else kTs
         )
         state = init_func(
-            state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs or {}
+            state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs
         )
 
         # set up trajectory reporters

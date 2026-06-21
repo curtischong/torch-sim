@@ -108,6 +108,28 @@ def test_integrate_double_nvt(
     assert not torch.isnan(final_state.energy).any()
 
 
+def test_integrate_converts_thermostat_tau(
+    ar_supercell_sim_state: SimState, lj_model: LennardJonesModel
+) -> None:
+    """integrate scales Nose-Hoover `tau` to internal units like `timestep`.
+
+    Otherwise `tau` is ~98x too small for metal units, giving an over-stiff
+    thermostat that diverges on force spikes (issue #579).
+    """
+    tau = 0.1  # ps, same convention as `timestep`
+    final = ts.integrate(
+        system=ar_supercell_sim_state,
+        model=lj_model,
+        integrator=ts.Integrator.nvt_nose_hoover,
+        n_steps=1,
+        temperature=100.0,
+        timestep=0.002,
+        init_kwargs={"tau": tau},
+    )
+    expected = tau * ts.units.MetalUnits.time
+    assert torch.allclose(final.chain.tau, torch.full_like(final.chain.tau, expected))
+
+
 def test_nonfinite_systems_partial_batch(ar_double_sim_state: SimState) -> None:
     """Per-system non-finite detection flags only the diverged system (issue #579)."""
 

@@ -1,43 +1,53 @@
-"""Reproduce torch-sim issue #579.
+"""Reproduction + fix verification for torch-sim issue #579.
 
-Batched NVT Nose-Hoover MD with SevenNet produces NaN energy/temperature in some
-batch elements while others stay finite, with no diagnostic warning.
+Just run it:  uv run python repro_579.py
 
-https://github.com/TorchSim/torch-sim/issues/579
+Root cause: ``ts.integrate`` converts ``timestep`` to internal units but used to
+forward the Nose-Hoover relaxation time ``tau`` unconverted. In metal units that
+factor is ~98x, so asking for tau = 200 fs actually gave tau ~ 2 fs (about one
+step) -- a thermostat ~100x too stiff. It survives gentle dynamics but massively
+overcorrects a force spike (e.g. a close contact) into float overflow -> NaN.
+That is "torch-sim diverges where ASE stays finite under identical settings"
+from the report.
 
-Setup mirrors the report:
-  - 16 independent amorphous Na16Ta16Cl96 structures (128 atoms each)
-  - fixed-cell NVT, Nose-Hoover chain thermostat, 300 K
-  - dt = 2 fs, thermostat damping tau = 200 fs
-  - 200 warmup + 1000 measured steps
-  - SevenNet (mf-ompa checkpoint, modal="omat24"); optional D3(BJ)-PBE
-
-uv run --with tad-dftd3 python repro_579.py --strain 0.22 --warmup 0 --steps 300
+On identical structures and across several seeds this prints, for each seed:
+  - ASE (SevenNet, Nose-Hoover NVT, physical 2 fs / 200 fs) stays finite
+  - torch-sim with the OLD unconverted tau diverges on the planted system
+  - torch-sim via the fixed ``ts.integrate`` (tau in ps, now converted) is finite
 """
 
 from __future__ import annotations
 
-import argparse
+import warnings
 
 import numpy as np
 import torch
 from ase import Atoms
-from ase.data import atomic_masses
+from ase import units as aseu
+from ase.md.nose_hoover_chain import NoseHooverChainNVT
+from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 
 import sevenn
 import sevenn.util
+from sevenn.calculator import SevenNetCalculator
 
 import torch_sim as ts
-from torch_sim.integrators import Integrator
-from torch_sim.models.interface import SumModel
+from torch_sim.integrators import Integrator, nvt_nose_hoover_init, nvt_nose_hoover_step
 from torch_sim.models.sevennet import SevenNetModel
+from torch_sim.units import MetalUnits
 
-from d3_params import build_pbe_d3_model
+# --- fixed settings (mirror the report) -------------------------------------
+CKPT = "sevennet-mf-ompa"
+DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+SEEDS = 4
+STEPS = 6
+CONTACT = 0.8  # Angstrom: planted hard overlap that makes divergence deterministic
+DT_PS = 0.002  # 2 fs
+TAU_PS = 0.2  # 200 fs
 
 
-def make_amorphous(seed: int, min_dist: float = 2.26, box: float = 14.5,
-                   strain: float = 0.0) -> Atoms:
-    """Random amorphous Na16Ta16Cl96 (NaTaCl6) via rejection sampling."""
+def make_system(seed: int, *, contact: float | None, box: float = 14.5) -> Atoms:
+    """Random amorphous Na16Ta16Cl96; if ``contact`` is set, plant one overlap."""
     rng = np.random.default_rng(seed)
     numbers = [11] * 16 + [73] * 16 + [17] * 96  # Na, Ta, Cl
     pos: list[np.ndarray] = []
@@ -45,111 +55,89 @@ def make_amorphous(seed: int, min_dist: float = 2.26, box: float = 14.5,
         cand = rng.uniform(0.0, box, size=3)
         if pos:
             d = np.array(pos) - cand
-            d -= box * np.round(d / box)  # min-image
-            if np.linalg.norm(d, axis=1).min() < min_dist:
+            d -= box * np.round(d / box)
+            if np.linalg.norm(d, axis=1).min() < 2.26:
                 continue
         pos.append(cand)
-    scale = 1.0 - strain  # isotropic compression -> denser, more strained
-    return Atoms(
-        numbers=numbers,
-        positions=np.array(pos) * scale,
-        cell=[box * scale, box * scale, box * scale],
-        pbc=True,
-    )
+    positions = np.array(pos)
+    if contact is not None:
+        positions[1] = positions[0] + np.array([contact, 0.0, 0.0])
+    return Atoms(numbers=numbers, positions=positions, cell=[box] * 3, pbc=True)
 
 
-def min_nn(atoms: Atoms) -> float:
-    d = atoms.get_all_distances(mic=True)
-    np.fill_diagonal(d, np.inf)
-    return float(d.min())
+def ase_finite(atoms: Atoms, calc: SevenNetCalculator, seed: int) -> bool:
+    """ASE Nose-Hoover NVT at physical 2 fs / 200 fs; return whether it stays finite."""
+    a = atoms.copy()
+    a.calc = calc
+    MaxwellBoltzmannDistribution(a, temperature_K=300, rng=np.random.default_rng(seed))
+    dyn = NoseHooverChainNVT(a, timestep=2.0 * aseu.fs, temperature_K=300,
+                             tdamp=200 * aseu.fs)
+    for _ in range(STEPS):
+        dyn.run(1)
+        if not np.isfinite(a.get_positions()).all():
+            return False
+    return True
+
+
+def torchsim_buggy_bad(systems: list[Atoms], model, seed: int) -> list[bool]:
+    """Pre-fix path: tau forwarded UNCONVERTED (interpreted in internal units)."""
+    torch.manual_seed(seed)
+    state = ts.io.atoms_to_state(systems, device=DEV, dtype=torch.float32)
+    dt = torch.tensor(DT_PS * float(MetalUnits.time))
+    kT = torch.tensor(300.0 * float(MetalUnits.temperature))
+    s = nvt_nose_hoover_init(state, model, kT=kT, dt=dt, tau=TAU_PS)  # bug: raw tau
+    for _ in range(STEPS):
+        s = nvt_nose_hoover_step(s, model, dt=dt, kT=kT)
+    return ts.runners.nonfinite_systems(s).tolist()
+
+
+def torchsim_fixed_bad(systems: list[Atoms], model, seed: int) -> list[bool]:
+    """Fixed path: ts.integrate converts tau (ps) to internal units like timestep."""
+    torch.manual_seed(seed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        final = ts.integrate(
+            system=systems, model=model, integrator=Integrator.nvt_nose_hoover,
+            n_steps=STEPS, temperature=300.0, timestep=DT_PS,
+            init_kwargs={"tau": TAU_PS}, pbar=False,
+        )
+    return ts.runners.nonfinite_systems(final).tolist()
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--n-systems", type=int, default=16)
-    ap.add_argument("--warmup", type=int, default=200)
-    ap.add_argument("--steps", type=int, default=1000)
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--no-d3", action="store_true", help="disable D3(BJ)-PBE")
-    ap.add_argument("--min-dist", type=float, default=2.26)
-    ap.add_argument("--box", type=float, default=14.5)
-    ap.add_argument("--strain", type=float, default=0.0,
-                    help="isotropic compression fraction (denser quench)")
-    args = ap.parse_args()
+    print(f"sevenn={sevenn.__version__} torch={torch.__version__} device={DEV}")
+    print(f"SevenNet; NVT Nose-Hoover, 300 K, 2 fs, tau=200 fs, {STEPS} steps, "
+          f"contact={CONTACT} A\n")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float32
-    torch.manual_seed(args.seed)
-
-    print(f"sevenn={sevenn.__version__} torch={torch.__version__} device={device}")
-
-    # Graded strain: system 0 is relaxed (stable alone), the last is most
-    # compressed (unstable alone). Lets us test cross-system NaN contamination.
-    strains = [args.strain * i / max(args.n_systems - 1, 1)
-               for i in range(args.n_systems)]
-    structures = [
-        make_amorphous(seed=i, min_dist=args.min_dist, box=args.box, strain=s)
-        for i, s in enumerate(strains)
-    ]
-    nn = [min_nn(a) for a in structures]
-    print(f"built {len(structures)} structures, min-NN range "
-          f"{min(nn):.2f}-{max(nn):.2f} Angstrom (graded strain)")
-
-    cp = sevenn.util.load_checkpoint("sevennet-mf-ompa")
+    cp = sevenn.util.load_checkpoint(CKPT)
     raw = cp.build_model()
     raw.set_is_batch_data(True)
-    sevennet = SevenNetModel(model=raw.to(device), modal="omat24",
-                             device=torch.device(device), dtype=dtype)
-    if args.no_d3:
-        model = sevennet
-        print("model: SevenNet (no D3)")
-    else:
-        d3 = build_pbe_d3_model(device=device, dtype=dtype, compute_stress=True)
-        model = SumModel(sevennet, d3)
-        print("model: SevenNet + D3(BJ)-PBE")
+    model = SevenNetModel(model=raw.to(DEV), modal="omat24", device=DEV,
+                          dtype=torch.float32)
+    ase_calc = SevenNetCalculator(model=CKPT, modal="omat24", device=str(DEV))
 
-    n_steps = args.warmup + args.steps
-    print(f"running batched nvt_nose_hoover: {n_steps} steps, dt=2fs, 300K, tau=200fs")
-    final = ts.integrate(
-        system=structures,
-        model=model,
-        integrator=Integrator.nvt_nose_hoover,
-        n_steps=n_steps,
-        temperature=300.0,
-        timestep=0.002,  # ps == 2 fs
-        init_kwargs={"tau": 0.2},  # ps == 200 fs (thermostat damping)
-        pbar=True,
-    )
+    n_ok = 0
+    for seed in range(SEEDS):
+        clean = make_system(2 * seed, contact=None)
+        planted = make_system(2 * seed + 1, contact=CONTACT)
+        systems = [clean, planted]  # system 0 clean, system 1 planted
 
-    # Per-system diagnostics
-    e = final.energy.detach().cpu()
-    temps = ts.calc_kT(
-        masses=final.masses, momenta=final.momenta, system_idx=final.system_idx
-    ).detach().cpu() / ts.units.MetalUnits.temperature
-    pos_finite = torch.zeros(final.n_systems, dtype=torch.bool)
-    for i in range(final.n_systems):
-        mask = final.system_idx == i
-        pos_finite[i] = torch.isfinite(final.positions[mask]).all()
+        ase_ok = ase_finite(planted, ase_calc, seed)
+        buggy = torchsim_buggy_bad(systems, model, seed)
+        fixed = torchsim_fixed_bad(systems, model, seed)
 
-    print("\nper-system final state:")
-    print(f"{'sys':>3} {'energy(eV)':>14} {'T(K)':>10} {'pos_finite':>11}")
-    n_bad = 0
-    for i in range(final.n_systems):
-        e_nan = not torch.isfinite(e[i])
-        t_nan = not torch.isfinite(temps[i])
-        bad = e_nan or t_nan or not pos_finite[i]
-        n_bad += bad
-        flag = "  <-- NaN" if bad else ""
-        print(f"{i:>3} {e[i].item():>14.3f} {temps[i].item():>10.1f} "
-              f"{str(bool(pos_finite[i])):>11}{flag}")
+        # Expected: ASE finite; buggy diverges only the planted (sys 1); fix all finite
+        ok = ase_ok and buggy == [False, True] and fixed == [False, False]
+        n_ok += ok
+        print(f"seed={seed}: ASE_planted_finite={ase_ok}  "
+              f"torchsim_buggy_diverged={[i for i, b in enumerate(buggy) if b]}  "
+              f"torchsim_fixed_diverged={[i for i, b in enumerate(fixed) if b]}  "
+              f"-> {'OK' if ok else 'UNEXPECTED'}")
 
-    print(f"\n{n_bad}/{final.n_systems} systems ended with NaN "
-          f"(energy/temperature/positions).")
-    if n_bad:
-        print("REPRODUCED: batched MD silently returned partial-batch NaNs "
-              "(no warning/exception was raised).")
-    else:
-        print("No NaNs this run; try more steps or a different --seed.")
+    print(f"\n{n_ok}/{SEEDS} seeds matched the expected pattern:")
+    print("  - ASE stays finite (the issue #579 control)")
+    print("  - pre-fix torch-sim (unconverted tau) diverges where ASE does not")
+    print("  - fixed torch-sim (tau converted in integrate) matches ASE: finite")
 
 
 if __name__ == "__main__":
