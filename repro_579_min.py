@@ -22,8 +22,9 @@ ROOT CAUSE
 
 Two demos, each comparing BUGGY tau (pre-fix, tau~dt) vs FIXED tau (converted):
   1. Lennard-Jones, single system -- fast, no download, fully deterministic.
-  2. SevenNet (7net-0) on the reporter's real 16 structures, batched -- faithful;
-     downloads a ~100 MB checkpoint and reproduces the subset-NaN symptom.
+  2. SevenNet-OMNI (the reporter's exact model, modal="omat24") on their real 16
+     structures, batched -- a 100% faithful repro; downloads a ~100 MB checkpoint
+     and reproduces the subset-NaN symptom. Requires sevenn>=0.13.0.
 """
 
 from __future__ import annotations
@@ -78,8 +79,9 @@ def bad_systems(state: ts.state.SimState) -> list[int]:
 
 
 def run_integrate(
-    systems: list[Atoms], model, *, tau_ps: float, steps: int
+    systems: list[Atoms], model, *, tau_ps: float, steps: int, seed: int = 0
 ) -> list[int]:
+    torch.manual_seed(seed)  # fix the initial velocity draw (same for buggy vs fixed)
     final = ts.integrate(
         system=systems,
         model=model,
@@ -120,20 +122,25 @@ def lj_demo() -> None:
 
 
 def sevennet_demo() -> None:
-    print("[2] SevenNet 7net-0, reporter's 16 real structures, batched")
+    print("[2] SevenNet-OMNI (modal=omat24), reporter's 16 real structures, batched")
     from torch_sim.models.sevennet import SevenNetModel
 
     systems = reporter_structures()
-    model = SevenNetModel(model="7net-0", device=DEV, dtype=DTYPE)
+    model = SevenNetModel(model="7net-omni", modal="omat24", device=DEV, dtype=DTYPE)
+    # Reporter's MD length (1000 steps). The instability is marginal, so the EXACT
+    # diverged set is not bit-reproducible on GPU (SevenNet scatter ops are
+    # non-deterministic) -- but the buggy path reliably tips >=1 system to NaN over
+    # this length, while the fixed path stays finite. This is the reporter's exact
+    # "some batch elements end with NaN" symptom.
     # buggy: reconstruct pre-fix internal tau (0.2) by undoing integrate's conversion
-    buggy = run_integrate(systems, model, tau_ps=TAU_PS / TIME, steps=200)
-    fixed = run_integrate(systems, model, tau_ps=TAU_PS, steps=200)
-    print(f"    buggy (tau~dt)   diverged systems = {buggy}  (a marginal subset NaNs)")
+    buggy = run_integrate(systems, model, tau_ps=TAU_PS / TIME, steps=1000)
+    fixed = run_integrate(systems, model, tau_ps=TAU_PS, steps=1000)
+    print(f"    buggy (tau~dt)   diverged systems = {buggy}  (>=1 system NaNs; set varies)")
     print(f"    fixed (tau*time) diverged systems = {fixed}  (expect [])\n")
 
 
 def main() -> None:
-    print(f"device={DEV}  timestep=2 fs  tau=200 fs  tau/dt(buggy)~1  steps=200\n")
+    print(f"device={DEV}  timestep=2 fs  tau=200 fs  tau/dt(buggy)~1\n")
     lj_demo()
     sevennet_demo()
 
