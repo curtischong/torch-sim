@@ -75,8 +75,9 @@ Notes:
 
 # ruff: noqa: F401
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import torch_sim as ts
 
@@ -201,4 +202,73 @@ INTEGRATOR_REGISTRY: Final[
         npt_crescale_init,
         npt_crescale_triclinic_step,
     ),
+}
+
+
+class TimeDim(StrEnum):
+    """Physical time dimension of an integrator keyword argument.
+
+    :func:`torch_sim.runners.integrate` accepts ``timestep`` in physical units
+    (e.g. ps for metal) and converts it to internal units. Time-dimensioned kwargs
+    must follow the same convention, so they are converted by the same
+    ``unit_system.time`` factor according to their dimension:
+
+    - ``time``: relaxation times (multiply by ``unit_system.time``).
+    - ``inverse_time``: friction/rate coefficients (divide by ``unit_system.time``).
+
+    See issue #579: an unconverted Nosé-Hoover ``tau`` is ~98x too small for metal
+    units, giving an over-stiff thermostat that diverges on force spikes.
+    """
+
+    time = "time"
+    inverse_time = "inverse_time"
+
+
+@dataclass(frozen=True, slots=True)
+class TimeKwarg:
+    """Unit metadata for one time-dimensioned integrator parameter.
+
+    ``integrate`` routes kwargs to two functions: ``init_kwargs`` go to the init
+    function (``channel="init"``), the remaining ``**integrator_kwargs`` go to the
+    step function (``channel="step"``). ``dim`` selects the conversion direction.
+    """
+
+    dim: TimeDim
+    channel: Literal["init", "step"]
+
+
+_TIME = TimeDim.time
+_INV = TimeDim.inverse_time
+
+#: Time-dimensioned kwargs of each integrator, keyed by :class:`Integrator` then by
+#: parameter name. Co-located with the integrators so the unit truth lives next to the
+#: parameters; :func:`torch_sim.runners.integrate` reads this to convert physical-unit
+#: kwargs to internal units in the correct channel. Integrators with no time-like
+#: kwargs are omitted (e.g. ``nve``).
+INTEGRATOR_TIME_KWARGS: Final[dict[Integrator, dict[str, TimeKwarg]]] = {
+    Integrator.nvt_vrescale: {"tau": TimeKwarg(_TIME, "step")},
+    Integrator.nvt_langevin: {"gamma": TimeKwarg(_INV, "step")},
+    Integrator.nvt_nose_hoover: {"tau": TimeKwarg(_TIME, "init")},
+    Integrator.npt_langevin_anisotropic: {
+        "b_tau": TimeKwarg(_TIME, "init"),
+        "alpha": TimeKwarg(_INV, "init"),
+        "cell_alpha": TimeKwarg(_INV, "init"),
+    },
+    Integrator.npt_langevin_isotropic: {
+        "b_tau": TimeKwarg(_TIME, "init"),
+        "alpha": TimeKwarg(_INV, "init"),
+        "cell_alpha": TimeKwarg(_INV, "init"),
+    },
+    Integrator.npt_nose_hoover_isotropic: {
+        "t_tau": TimeKwarg(_TIME, "init"),
+        "b_tau": TimeKwarg(_TIME, "init"),
+    },
+    Integrator.npt_crescale_isotropic: {
+        "tau_p": TimeKwarg(_TIME, "init"),
+        "tau": TimeKwarg(_TIME, "step"),
+    },
+    Integrator.npt_crescale_triclinic: {
+        "tau_p": TimeKwarg(_TIME, "init"),
+        "tau": TimeKwarg(_TIME, "step"),
+    },
 }

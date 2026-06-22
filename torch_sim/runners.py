@@ -18,7 +18,12 @@ from tqdm import tqdm
 
 import torch_sim as ts
 from torch_sim.autobatching import BinningAutoBatcher, InFlightAutoBatcher
-from torch_sim.integrators import INTEGRATOR_REGISTRY, Integrator
+from torch_sim.integrators import (
+    INTEGRATOR_REGISTRY,
+    INTEGRATOR_TIME_KWARGS,
+    Integrator,
+    TimeDim,
+)
 from torch_sim.integrators.md import MDState
 from torch_sim.models.interface import ModelInterface
 from torch_sim.optimizers import OPTIM_REGISTRY, FireState, Optimizer, OptimState
@@ -309,9 +314,16 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
         autobatcher (BinningAutoBatcher | bool): Optional autobatcher to use
         pbar (bool | dict[str, Any], optional): Show a progress bar. If a dict is given,
             it's passed to `tqdm` as kwargs.
-        init_kwargs (dict[str, Any], optional): Additional keyword arguments for
-            integrator init function.
-        **integrator_kwargs: Additional keyword arguments for integrator init function
+        init_kwargs (dict[str, Any], optional): Additional keyword arguments for the
+            integrator init function (e.g. Nose-Hoover `tau`, barostat `b_tau`/`t_tau`,
+            C-Rescale `tau_p`, Langevin `alpha`/`cell_alpha`). Time-dimensioned values
+            are given in the same physical units as `timestep` (e.g. ps for metal) and
+            converted to internal units automatically per each integrator's declared
+            `INTEGRATOR_TIME_KWARGS`. When `integrator` is a raw (init, step) tuple
+            there is no metadata, so kwargs pass through as-is.
+        **integrator_kwargs: Additional keyword arguments for the integrator step
+            function (e.g. V-Rescale/Langevin `tau`, Langevin `gamma`). Time-dimensioned
+            values follow the same physical-unit convention as `init_kwargs`.
 
     Returns:
         T: Final state after integration
@@ -330,16 +342,6 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
     kTs = kTs * unit_system.temperature
     dt = torch.as_tensor(timestep * unit_system.time, dtype=dtype, device=device)
 
-    # `timestep` is converted to internal units above; any relaxation TIME passed to
-    # the integrator init (Nose-Hoover thermostat `tau`, barostat `b_tau`) must be
-    # converted with the same factor, otherwise it is interpreted in internal units
-    # (~98x too small for metal) -- an over-stiff thermostat that diverges on force
-    # spikes where a correctly-scaled one stays finite (see issue #579).
-    init_kwargs = dict(init_kwargs or {})
-    for time_key in ("tau", "b_tau"):
-        if init_kwargs.get(time_key) is not None:
-            init_kwargs[time_key] = init_kwargs[time_key] * unit_system.time
-
     # Handle both string names and direct function tuples
     if isinstance(integrator, Integrator):
         init_func, step_func = INTEGRATOR_REGISTRY[integrator]
@@ -354,6 +356,25 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
             f"integrator must be key from Integrator or a tuple of "
             f"(init_func, step_func), got {type(integrator)}"
         )
+
+    # `timestep` is converted to internal units above, so time-dimensioned kwargs
+    # (relaxation times like `tau`, friction rates like `gamma`) must follow the same
+    # convention. Each registered integrator declares its time-like kwargs in
+    # INTEGRATOR_TIME_KWARGS -- the dimension (multiply for time, divide for inverse
+    # time) and the channel they flow through (`init_kwargs` -> init function, the
+    # remaining `**integrator_kwargs` -> step function). An unconverted Nose-Hoover
+    # `tau` is ~98x too small for metal units, giving an over-stiff thermostat that
+    # diverges on force spikes (see issue #579). Raw (init, step) tuples have no
+    # metadata, so their kwargs pass through unchanged.
+    init_kwargs = dict(init_kwargs or {})
+    channels = {"init": init_kwargs, "step": integrator_kwargs}
+    for time_key, meta in INTEGRATOR_TIME_KWARGS.get(integrator, {}).items():
+        kwargs = channels[meta.channel]
+        if kwargs.get(time_key) is not None:
+            if meta.dim is TimeDim.time:
+                kwargs[time_key] = kwargs[time_key] * unit_system.time
+            else:
+                kwargs[time_key] = kwargs[time_key] / unit_system.time
     # batch_iterator will be a list if autobatcher is False
     batch_iterator = _configure_batches_iterator(
         initial_state, model, autobatcher=autobatcher

@@ -130,6 +130,56 @@ def test_integrate_converts_thermostat_tau(
     assert torch.allclose(final.chain.tau, torch.full_like(final.chain.tau, expected))
 
 
+def test_integrate_converts_inverse_time_kwarg(
+    ar_supercell_sim_state: SimState,
+    lj_model: LennardJonesModel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """integrate divides inverse-time kwargs (e.g. Langevin `gamma`) by the unit factor.
+
+    The opposite direction from relaxation times: `gamma` is a rate, so it scales as
+    1/time, not time. It is a step kwarg, so it travels through `**integrator_kwargs`
+    to the step function (issue #579 / TimeDim.inverse_time).
+    """
+    gamma = 10.0  # 1/ps, same time convention as `timestep`
+    received: dict[str, object] = {}
+    init, real_step = ts.integrators.INTEGRATOR_REGISTRY[ts.Integrator.nvt_langevin]
+
+    def spy_step(**kwargs: object) -> MDState:
+        received["gamma"] = kwargs["gamma"]
+        return real_step(**kwargs)
+
+    monkeypatch.setitem(
+        ts.integrators.INTEGRATOR_REGISTRY, ts.Integrator.nvt_langevin, (init, spy_step)
+    )
+    ts.integrate(
+        system=ar_supercell_sim_state,
+        model=lj_model,
+        integrator=ts.Integrator.nvt_langevin,
+        n_steps=1,
+        temperature=100.0,
+        timestep=0.002,
+        gamma=gamma,
+    )
+    assert received["gamma"] == gamma / ts.units.MetalUnits.time
+
+
+def test_integrator_time_kwargs_match_signatures() -> None:
+    """Declared time-like kwargs must be real parameters of the channel they target.
+
+    Guards INTEGRATOR_TIME_KWARGS against drifting from the init/step signatures it
+    documents (wrong name or wrong channel).
+    """
+    import inspect
+
+    for integrator, kwargs in ts.integrators.INTEGRATOR_TIME_KWARGS.items():
+        init_func, step_func = ts.integrators.INTEGRATOR_REGISTRY[integrator]
+        funcs = {"init": init_func, "step": step_func}
+        for name, meta in kwargs.items():
+            params = inspect.signature(funcs[meta.channel]).parameters
+            assert name in params, f"{integrator}: {name} not in {meta.channel} signature"
+
+
 def test_nonfinite_systems_partial_batch(ar_double_sim_state: SimState) -> None:
     """Per-system non-finite detection flags only the diverged system (issue #579)."""
 
