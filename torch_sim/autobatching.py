@@ -30,7 +30,7 @@ import torch
 import torch_sim as ts
 from torch_sim.models.interface import ModelInterface
 from torch_sim.neighbors import torchsim_nl
-from torch_sim.state import SimState
+from torch_sim.state import SimState, detach_state_graph
 from torch_sim.typing import MemoryScaling
 
 
@@ -1109,6 +1109,14 @@ class InFlightAutoBatcher[T: SimState]:
         completed_idx = torch.where(convergence_tensor)[0].tolist()
 
         completed_states = updated_state.pop(completed_idx)
+
+        # Drop any retained autograd graph before these states are accumulated
+        # for the rest of the run. A popped state preserves grad_fn, and models
+        # such as UMA return a graph-carrying energy, so without this each
+        # completed state would pin its swap's full forward graph - leaking GPU
+        # memory (one graph per finished system) until the device fills.
+        for completed_state in completed_states:
+            detach_state_graph(completed_state)
 
         # necessary to ensure states that finish at the same time are ordered properly
         completed_states.reverse()

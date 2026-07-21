@@ -13,6 +13,7 @@ from torch_sim.autobatching import (
     to_constant_volume_bins,
 )
 from torch_sim.models.lennard_jones import LennardJonesModel
+from torch_sim.state import detach_state_graph
 
 
 def test_exact_fit():
@@ -486,6 +487,32 @@ def test_determine_max_batch_size_fibonacci(
     # Since we're not triggering OOM errors with our mock, it should return the
     # largest value that fits within max_atoms (simstate has 8 atoms, so 2 batches)
     assert max_size == 2
+
+
+def test_detach_state_graph_drops_grad_but_keeps_values(
+    si_sim_state: ts.SimState,
+) -> None:
+    """`detach_state_graph` strips grad graphs (the UMA leak) but preserves data.
+
+    Models such as UMA return a graph-carrying ``energy`` (``requires_grad=True``)
+    while their forces are detached; accumulating those graph-carrying states for
+    the whole run is the memory leak. The helper must detach grad-carrying tensors
+    in place, leave non-grad tensors untouched, and not change any values.
+    """
+    # Give one tensor attribute an autograd graph, as UMA's energy would carry.
+    grad_positions = (si_sim_state.positions.detach().clone().requires_grad_()) * 2
+    values_before = grad_positions.detach().clone()
+    si_sim_state.positions = grad_positions
+    masses_before = si_sim_state.masses  # a plain, non-grad tensor
+    assert si_sim_state.positions.requires_grad
+
+    returned = detach_state_graph(si_sim_state)
+
+    assert returned is si_sim_state  # detaches in place
+    assert not si_sim_state.positions.requires_grad
+    assert si_sim_state.positions.grad_fn is None
+    assert torch.allclose(si_sim_state.positions, values_before)  # values unchanged
+    assert si_sim_state.masses is masses_before  # non-grad tensors left as-is
 
 
 @pytest.mark.parametrize(

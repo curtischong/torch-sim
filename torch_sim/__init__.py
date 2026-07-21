@@ -93,7 +93,12 @@ from torch_sim.runners import (
     optimize,
     static,
 )
-from torch_sim.state import SimState, concatenate_states, initialize_state
+from torch_sim.state import (
+    SimState,
+    concatenate_states,
+    detach_state_graph,
+    initialize_state,
+)
 from torch_sim.trajectory import TorchSimTrajectory, TrajectoryReporter
 
 
@@ -145,6 +150,7 @@ __all__ = [
     "calc_temperature",
     "concatenate_states",
     "constraints",
+    "detach_state_graph",
     "elastic",
     "fire_init",
     "fire_step",
