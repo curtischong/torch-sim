@@ -1,4 +1,3 @@
-import inspect
 from collections.abc import Callable
 from pathlib import Path
 
@@ -14,7 +13,6 @@ from torch_sim.integrators.md import MDState
 from torch_sim.models.lennard_jones import LennardJonesModel
 from torch_sim.state import SimState
 from torch_sim.trajectory import TorchSimTrajectory, TrajectoryReporter
-from torch_sim.units import BAR_TO_EV_PER_ANGSTROM3, PS_TO_INTERNAL_TIME
 
 
 def test_integrate_nve(
@@ -108,75 +106,6 @@ def test_integrate_double_nvt(
     assert isinstance(final_state, SimState)
     assert final_state.n_atoms == 64
     assert not torch.isnan(final_state.energy).any()
-
-
-def test_integrate_converts_thermostat_tau(
-    ar_supercell_sim_state: SimState, lj_model: LennardJonesModel
-) -> None:
-    """High-level relaxation times use the same ps convention as timestep."""
-    tau = 0.1
-    final_state = ts.integrate(
-        system=ar_supercell_sim_state,
-        model=lj_model,
-        integrator=ts.Integrator.nvt_nose_hoover,
-        n_steps=1,
-        temperature=100.0,
-        timestep=0.002,
-        init_kwargs={"tau": tau},
-    )
-
-    expected = tau * PS_TO_INTERNAL_TIME
-    assert torch.allclose(
-        final_state.chain.tau, torch.full_like(final_state.chain.tau, expected)
-    )
-
-
-@pytest.mark.parametrize(
-    ("integrator", "channel", "key", "factor"),
-    [
-        (ts.Integrator.nvt_nose_hoover, "init", "tau", PS_TO_INTERNAL_TIME),
-        (ts.Integrator.nvt_langevin, "step", "gamma", 1 / PS_TO_INTERNAL_TIME),
-        (
-            ts.Integrator.npt_langevin_isotropic,
-            "step",
-            "external_pressure",
-            BAR_TO_EV_PER_ANGSTROM3,
-        ),
-        (
-            ts.Integrator.npt_crescale_isotropic,
-            "init",
-            "isothermal_compressibility",
-            1 / BAR_TO_EV_PER_ANGSTROM3,
-        ),
-    ],
-)
-def test_convert_integrator_kwargs(
-    integrator: ts.Integrator, channel: str, key: str, factor: float
-) -> None:
-    """Boundary conversion handles each supported physical dimension."""
-    init_kwargs = {key: 2.0} if channel == "init" else {}
-    step_kwargs = {key: 2.0} if channel == "step" else {}
-
-    ts.runners._convert_integrator_kwargs(  # noqa: SLF001
-        integrator, init_kwargs, step_kwargs
-    )
-
-    converted = init_kwargs if channel == "init" else step_kwargs
-    assert converted[key] == pytest.approx(2.0 * factor)
-
-
-def test_integrator_kwarg_conversion_maps_match_signatures() -> None:
-    """Explicit conversion keys stay aligned with registered function signatures."""
-    channel_maps = {
-        "init": ts.runners._INTEGRATOR_INIT_KWARG_FACTORS,  # noqa: SLF001
-        "step": ts.runners._INTEGRATOR_STEP_KWARG_FACTORS,  # noqa: SLF001
-    }
-    for channel, conversion_map in channel_maps.items():
-        function_index = 0 if channel == "init" else 1
-        for integrator, conversions in conversion_map.items():
-            function = ts.integrators.INTEGRATOR_REGISTRY[integrator][function_index]
-            parameters = inspect.signature(function).parameters
-            assert conversions.keys() <= parameters.keys()
 
 
 def test_integrate_double_nvt_multiple_temperatures(
@@ -802,8 +731,7 @@ def test_static_with_autobatcher_and_reporting(
     tmp_path: Path,
 ) -> None:
     """Test static calculation with autobatcher, trajectory reporting, and robust
-    reordering.
-    """
+    reordering."""
     from ase.build import bulk
 
     # 1. Create diverse SimState objects for robust binning test

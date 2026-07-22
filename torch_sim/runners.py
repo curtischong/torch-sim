@@ -25,11 +25,7 @@ from torch_sim.optimizers import OPTIM_REGISTRY, FireState, Optimizer, OptimStat
 from torch_sim.state import _CANONICAL_MODEL_KEYS, SimState
 from torch_sim.trajectory import TrajectoryReporter
 from torch_sim.typing import StateLike
-from torch_sim.units import (
-    BAR_TO_EV_PER_ANGSTROM3,
-    BOLTZMANN_CONSTANT_EV_PER_K,
-    PS_TO_INTERNAL_TIME,
-)
+from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K, PS_TO_INTERNAL_TIME
 
 
 logger = logging.getLogger(__name__)
@@ -253,64 +249,7 @@ def _write_initial_state(
             trajectory_reporter.report(state, 0, model=model)
 
 
-_INTEGRATOR_INIT_KWARG_FACTORS = {
-    Integrator.nvt_nose_hoover: {"tau": PS_TO_INTERNAL_TIME},
-    Integrator.npt_langevin_anisotropic: {
-        "b_tau": PS_TO_INTERNAL_TIME,
-        "alpha": 1 / PS_TO_INTERNAL_TIME,
-        "cell_alpha": 1 / PS_TO_INTERNAL_TIME,
-    },
-    Integrator.npt_langevin_isotropic: {
-        "b_tau": PS_TO_INTERNAL_TIME,
-        "alpha": 1 / PS_TO_INTERNAL_TIME,
-        "cell_alpha": 1 / PS_TO_INTERNAL_TIME,
-    },
-    Integrator.npt_nose_hoover_isotropic: {
-        "t_tau": PS_TO_INTERNAL_TIME,
-        "b_tau": PS_TO_INTERNAL_TIME,
-    },
-    Integrator.npt_crescale_isotropic: {
-        "tau_p": PS_TO_INTERNAL_TIME,
-        "isothermal_compressibility": 1 / BAR_TO_EV_PER_ANGSTROM3,
-    },
-    Integrator.npt_crescale_triclinic: {
-        "tau_p": PS_TO_INTERNAL_TIME,
-        "isothermal_compressibility": 1 / BAR_TO_EV_PER_ANGSTROM3,
-    },
-}
-
-_INTEGRATOR_STEP_KWARG_FACTORS = {
-    Integrator.nvt_vrescale: {"tau": PS_TO_INTERNAL_TIME},
-    Integrator.nvt_langevin: {"gamma": 1 / PS_TO_INTERNAL_TIME},
-    Integrator.npt_langevin_anisotropic: {"external_pressure": BAR_TO_EV_PER_ANGSTROM3},
-    Integrator.npt_langevin_isotropic: {"external_pressure": BAR_TO_EV_PER_ANGSTROM3},
-    Integrator.npt_nose_hoover_isotropic: {"external_pressure": BAR_TO_EV_PER_ANGSTROM3},
-    Integrator.npt_crescale_isotropic: {
-        "external_pressure": BAR_TO_EV_PER_ANGSTROM3,
-        "tau": PS_TO_INTERNAL_TIME,
-    },
-    Integrator.npt_crescale_triclinic: {
-        "external_pressure": BAR_TO_EV_PER_ANGSTROM3,
-        "tau": PS_TO_INTERNAL_TIME,
-    },
-}
-
-
-def _convert_integrator_kwargs(
-    integrator: Integrator,
-    init_kwargs: dict[str, Any],
-    step_kwargs: dict[str, Any],
-) -> None:
-    """Convert public integrator kwargs to TorchSim's internal units in place."""
-    for key, factor in _INTEGRATOR_INIT_KWARG_FACTORS.get(integrator, {}).items():
-        if init_kwargs.get(key) is not None:
-            init_kwargs[key] = init_kwargs[key] * factor
-    for key, factor in _INTEGRATOR_STEP_KWARG_FACTORS.get(integrator, {}).items():
-        if step_kwargs.get(key) is not None:
-            step_kwargs[key] = step_kwargs[key] * factor
-
-
-def integrate[T: SimState](  # noqa: C901, PLR0915
+def integrate[T: SimState](  # noqa: C901
     system: StateLike,
     model: ModelInterface,
     *,
@@ -333,26 +272,22 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
             (init_func, step_func) functions.
         n_steps (int): Number of integration steps. If resuming from a trajectory, this
             is the  number of additional steps to run.
-        temperature (float | ArrayLike): Temperature in K, or an array of temperatures
-            for each step or system:
+        temperature (float | ArrayLike): Temperature or array of temperatures for each
+            step or system:
             Float: used for all steps and systems
             1D array of length n_steps: used for each step
             1D array of length n_systems: used for each system
             2D array of shape (n_steps, n_systems): used for each step and system.
-        timestep (float): Integration time step in ps.
+        timestep (float): Integration time step
         trajectory_reporter (TrajectoryReporter | dict | None): Optional reporter for
             tracking trajectory. If a dict, will be passed to the TrajectoryReporter
             constructor.
         autobatcher (BinningAutoBatcher | bool): Optional autobatcher to use
         pbar (bool | dict[str, Any], optional): Show a progress bar. If a dict is given,
             it's passed to `tqdm` as kwargs.
-        init_kwargs (dict[str, Any], optional): Additional keyword arguments for the
-            integrator init function. Registered integrators accept relaxation times
-            in ps, rates in ps^-1, and compressibility in bar^-1.
-        **integrator_kwargs: Additional keyword arguments for the integrator step
-            function. Registered integrators accept relaxation times in ps, rates in
-            ps^-1, and external pressure in bar. Custom integrator tuples receive
-            keyword arguments unchanged.
+        init_kwargs (dict[str, Any], optional): Additional keyword arguments for
+            integrator init function.
+        **integrator_kwargs: Additional keyword arguments for integrator init function
 
     Returns:
         T: Final state after integration
@@ -383,9 +318,6 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
             f"integrator must be key from Integrator or a tuple of "
             f"(init_func, step_func), got {type(integrator)}"
         )
-    init_kwargs = dict(init_kwargs or {})
-    if isinstance(integrator, Integrator):
-        _convert_integrator_kwargs(integrator, init_kwargs, integrator_kwargs)
     # batch_iterator will be a list if autobatcher is False
     batch_iterator = _configure_batches_iterator(
         initial_state, model, autobatcher=autobatcher
@@ -417,7 +349,9 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
         batch_kT = (
             kTs[:, system_indices] if (system_indices and len(kTs.shape) == 2) else kTs
         )
-        state = init_func(state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs)
+        state = init_func(
+            state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs or {}
+        )
 
         # set up trajectory reporters
         if autobatcher and trajectory_reporter is not None and og_filenames is not None:
