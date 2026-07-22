@@ -27,7 +27,6 @@ from torch_sim.models.lennard_jones import LennardJonesModel
 from torch_sim.models.mace import MaceModel
 from torch_sim.telemetry import configure_logging, get_logger
 from torch_sim.trajectory import TorchSimTrajectory, TrajectoryReporter
-from torch_sim.units import MetalUnits
 
 
 configure_logging(log_file="4_high_level_api.log")
@@ -250,9 +249,7 @@ final_state = ts.optimize(
     system=systems,
     model=mace_model,
     optimizer=ts.Optimizer.fire,
-    convergence_fn=lambda state, last_energy: (
-        last_energy - state.energy < 1e-6 * MetalUnits.energy
-    ),
+    convergence_fn=lambda state, last_energy: last_energy - state.energy < 1e-6,
     max_steps=10 if SMOKE_TEST else 1000,
     init_kwargs=dict(cell_filter=ts.CellFilter.unit),
 )

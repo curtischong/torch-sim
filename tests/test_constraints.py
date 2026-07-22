@@ -18,7 +18,7 @@ from torch_sim.models.interface import ModelInterface
 from torch_sim.models.lennard_jones import LennardJonesModel
 from torch_sim.optimizers import FireFlavor
 from torch_sim.transforms import get_centers_of_mass
-from torch_sim.units import MetalUnits
+from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K
 
 
 def _run_quasi_newton(
@@ -100,7 +100,7 @@ def test_fix_com_nvt_langevin(cu_sim_state: ts.SimState, lj_model: LennardJonesM
     """Test FixCom constraint in NVT Langevin dynamics."""
     n_steps = 1000
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
 
     dofs_before = cu_sim_state.get_number_of_degrees_of_freedom()
     cu_sim_state.constraints = [FixCom([0])]
@@ -125,7 +125,7 @@ def test_fix_com_nvt_langevin(cu_sim_state: ts.SimState, lj_model: LennardJonesM
             system_idx=state.system_idx,
             dof_per_system=state.get_number_of_degrees_of_freedom(),
         )
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
     temperatures = torch.stack(temperatures)
 
     traj_positions = torch.stack(positions)
@@ -147,7 +147,7 @@ def test_fix_atoms_nvt_langevin(cu_sim_state: ts.SimState, lj_model: LennardJone
     """Test FixAtoms constraint in NVT Langevin dynamics."""
     n_steps = 1000
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
 
     dofs_before = cu_sim_state.get_number_of_degrees_of_freedom()
     cu_sim_state.constraints = [FixAtoms(atom_idx=torch.tensor([0, 1], dtype=torch.long))]
@@ -166,7 +166,7 @@ def test_fix_atoms_nvt_langevin(cu_sim_state: ts.SimState, lj_model: LennardJone
             system_idx=state.system_idx,
             dof_per_system=state.get_number_of_degrees_of_freedom(),
         )
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
     temperatures = torch.stack(temperatures)
     traj_positions = torch.stack(positions)
 
@@ -568,7 +568,7 @@ def test_integrators_with_constraints(
 ) -> None:
     """Test all integrators respect constraints."""
     cu_sim_state.constraints = [constraint]
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
     dt = torch.tensor(0.001, dtype=DTYPE)
 
     # Store initial state
@@ -645,14 +645,14 @@ def test_multiple_constraints_and_dof(
     state = ts.nvt_langevin_init(
         cu_sim_state,
         lj_model,
-        kT=torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature,
+        kT=torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K,
     )
     for _ in range(200):
         state = ts.nvt_langevin_step(
             state,
             lj_model,
             dt=torch.tensor(0.001, dtype=DTYPE),
-            kT=torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature,
+            kT=torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K,
         )
     assert torch.allclose(state.positions[0], initial_pos, atol=1e-6)
     final_com = get_centers_of_mass(
@@ -921,7 +921,7 @@ def test_temperature_with_constrained_dof(
     state = ts.nvt_langevin_init(
         cu_sim_state,
         lj_model,
-        kT=torch.tensor(target, dtype=DTYPE) * MetalUnits.temperature,
+        kT=torch.tensor(target, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K,
     )
     temps = []
     for _ in range(4000):
@@ -929,10 +929,10 @@ def test_temperature_with_constrained_dof(
             state,
             lj_model,
             dt=torch.tensor(0.001, dtype=DTYPE),
-            kT=torch.tensor(target, dtype=DTYPE) * MetalUnits.temperature,
+            kT=torch.tensor(target, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K,
         )
         temp = state.calc_kT()
-        temps.append(temp / MetalUnits.temperature)
+        temps.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
     avg = torch.mean(torch.stack(temps)[500:])
     assert abs(avg - target) / target < 0.30
 

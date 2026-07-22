@@ -1,9 +1,5 @@
-# ruff: noqa: N815, PIE796
-"""Unit systems and conversions.
-
-Defines a units system and returns a dictionary of conversion factors.
-Units are defined similar to https://docs.lammps.org/units.html.
-"""
+# ruff: noqa: N815
+"""Physical constants and unit conversion factors used by TorchSim."""
 
 from enum import Enum
 from math import pi, sqrt
@@ -65,62 +61,9 @@ class UnitConversion(float, Enum):
 
 uc = UnitConversion
 
-
-class MetalUnits(float, Enum):
-    """Metal unit system using Angstroms, eV, amu, and proton charge."""
-
-    def __new__(cls, value: float) -> Self:
-        """Create new MetalUnits enum value."""
-        return float.__new__(cls, value)
-
-    # Base units
-    mass = 1.0  # Default mass in amu
-    distance = 1.0  # Default distance in Angstrom
-    energy = 1.0  # Default energy in eV
-    charge = 1.0  # Default charge in proton charge
-
-    # Derived units
-    time = sqrt(energy * bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s  # picoseconds
-    velocity = distance / time  # Ang/ps
-    force = energy / distance  # eV/Ang
-    torque = energy  # eV
-    temperature = bc.k_B / bc.e  # Boltzmann in eV/K
-    pressure = uc.bar_to_pa * (energy * uc.Ang3_to_met3 / bc.e)  # bar
-    electric_field = charge * distance  # e*Ang
-
-
-class RealUnits(float, Enum):
-    """Real unit system using Angstroms, kcal/mol, and proton charge."""
-
-    def __new__(cls, value: float) -> Self:
-        """Create new RealUnits enum value."""
-        return float.__new__(cls, value)
-
-    # Base units
-    mass = 1.0  # Default mass in grams/mol
-    distance = 1.0  # Default distance in Angstrom
-    energy = 1.0  # Default energy in kcal/mol
-    charge = 1.0  # Default charge in proton charge
-
-    # Derived units
-    time = (
-        sqrt(
-            energy / (bc.amu * uc.Ang2_to_met2 * bc.n_av / (uc.cal_to_J * uc.kcal_to_cal))
-        )
-        * uc.fs_to_s
-    )  # femtoseconds
-    velocity = distance / time  # Ang/fs
-    force = energy / distance  # kcal/mol/Ang
-    torque = energy  # kcal/mol
-    temperature = bc.k_B * bc.n_av / uc.cal_to_J / uc.kcal_to_cal  # kcal/mol K
-    pressure = (
-        uc.Ang3_to_met3 * (bc.n_av / (uc.cal_to_J * uc.kcal_to_cal)) * uc.bar_to_pa
-    )  # bar
-    electric_field = charge * distance  # e*Ang
-
-
-class UnitSystem:
-    """Container class for unit systems."""
-
-    metal = MetalUnits
-    real = RealUnits
+# TorchSim state uses Angstrom, eV, and atomic mass units. These are the only
+# non-trivial factors needed to convert the public MD API (K, ps, bar) to the
+# coherent internal values required by the low-level integrators.
+BOLTZMANN_CONSTANT_EV_PER_K = bc.k_B / bc.e
+PS_TO_INTERNAL_TIME = sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s
+BAR_TO_EV_PER_ANGSTROM3 = uc.bar_to_pa * uc.Ang3_to_met3 / bc.e

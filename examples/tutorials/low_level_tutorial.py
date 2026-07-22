@@ -175,16 +175,16 @@ for step in range(5):
 Similarly, we can do molecular dynamics of the systems. We need to make sure we are
 using correct units for the integrator. TorchSim provides a `units.py` module to
 help with the units system and conversions. All currently supported models implement
-[MetalUnits](https://docs.lammps.org/units.html), so we must convert our units into
+TorchSim internal units, so we must convert our units into
 that system.
 """
 
 # %%
-from torch_sim.units import MetalUnits
+from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K, PS_TO_INTERNAL_TIME
 
-dt = 0.002 * MetalUnits.time  # Timestep (ps)
-kT = 300 * MetalUnits.temperature  # Initial temperature (K)
-gamma = 10 / MetalUnits.time  # Langevin friction coefficient (ps^-1)
+dt = 0.002 * PS_TO_INTERNAL_TIME  # Timestep (ps)
+kT = 300 * BOLTZMANN_CONSTANT_EV_PER_K  # Initial temperature (K)
+gamma = 10 / PS_TO_INTERNAL_TIME  # Langevin friction coefficient (ps^-1)
 
 
 # %% [markdown]
@@ -218,7 +218,7 @@ for step in range(30):
         temp_E_units = ts.calc_kT(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
-        temp = temp_E_units / MetalUnits.temperature
+        temp = temp_E_units / BOLTZMANN_CONSTANT_EV_PER_K
         print(f"{step=}: Temperature: {temp}")
 
 

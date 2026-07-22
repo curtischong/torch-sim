@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from torch_sim.units import MetalUnits
+from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K
 
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ def calc_temperature(
     velocities: torch.Tensor | None = None,
     system_idx: torch.Tensor | None = None,
     dof_per_system: torch.Tensor | None = None,
-    units: MetalUnits = MetalUnits.temperature,
+    units: float = BOLTZMANN_CONSTANT_EV_PER_K,
 ) -> torch.Tensor:
     """Calculate temperature from momenta/velocities and masses.
 

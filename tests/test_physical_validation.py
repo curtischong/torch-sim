@@ -48,7 +48,11 @@ from numpy.typing import NDArray
 import torch_sim as ts
 from torch_sim.integrators.npt import npt_crescale_triclinic_average_step
 from torch_sim.models.lennard_jones import LennardJonesModel
-from torch_sim.units import MetalUnits
+from torch_sim.units import (
+    BAR_TO_EV_PER_ANGSTROM3,
+    BOLTZMANN_CONSTANT_EV_PER_K,
+    PS_TO_INTERNAL_TIME,
+)
 
 
 physical_validation = pytest.importorskip("physical_validation")
@@ -84,7 +88,7 @@ TEMPERATURES = [58.3, 60.0]
 EXTERNAL_PRESSURE = 0.0
 PRESSURE_SWEEP_TEMP = 60.0
 PRESSURE_SWEEP_BAR = 90.0
-PRESSURE_SWEEP_EVA3 = PRESSURE_SWEEP_BAR * float(MetalUnits.pressure)
+PRESSURE_SWEEP_EVA3 = PRESSURE_SWEEP_BAR * float(BAR_TO_EV_PER_ANGSTROM3)
 
 # Physical validation thresholds (in sigma units)
 KE_SIGMA_WARNING = 2.0
@@ -115,11 +119,11 @@ def clean_validation_data() -> None:
 # Internal helpers
 # ---------------------------------------------------------------------------
 def _to_kt(temperature_K: float) -> float:
-    return temperature_K * float(MetalUnits.temperature)
+    return temperature_K * float(BOLTZMANN_CONSTANT_EV_PER_K)
 
 
 def _to_dt(timestep_ps: float) -> float:
-    return timestep_ps * float(MetalUnits.time)
+    return timestep_ps * float(PS_TO_INTERNAL_TIME)
 
 
 def _save_run_data(data: RunData, label: str) -> Path:
@@ -140,16 +144,16 @@ def _get_plot_path(request: pytest.FixtureRequest, name: str) -> str | None:
 
 def _pressure_to_bar(p_eva3: float) -> float:
     """Convert eV/Ang^3 to bar."""
-    return p_eva3 / float(MetalUnits.pressure)
+    return p_eva3 / float(BAR_TO_EV_PER_ANGSTROM3)
 
 
 # ---------------------------------------------------------------------------
 # Helpers: unit data, model, structure
 # ---------------------------------------------------------------------------
 def _make_unit_data() -> physical_validation.data.UnitData:
-    """Create UnitData for torch-sim's MetalUnits system."""
+    """Create UnitData for torch-sim's internal unit convention."""
     return physical_validation.data.UnitData(
-        kb=float(MetalUnits.temperature),  # k_B in eV/K = 8.617e-5
+        kb=float(BOLTZMANN_CONSTANT_EV_PER_K),  # k_B in eV/K = 8.617e-5
         energy_str="eV",
         energy_conversion=96.485,  # Convert to kJ/mol
         length_str="Ang",
@@ -321,7 +325,7 @@ def _run_npt(  # noqa: C901
             kT=kT,
             dt=dt,
             tau_p=3 * dt,
-            isothermal_compressibility=1e-6 / MetalUnits.pressure,
+            isothermal_compressibility=1e-6 / BAR_TO_EV_PER_ANGSTROM3,
         )
     else:
         msg = f"Unknown NPT integrator: {integrator_name}"

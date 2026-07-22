@@ -7,7 +7,11 @@ from torch_sim.integrators import initialize_momenta
 from torch_sim.integrators.npt import _npt_langevin_anisotropic_compute_cell_force
 from torch_sim.models.lennard_jones import LennardJonesModel
 from torch_sim.state import coerce_prng
-from torch_sim.units import MetalUnits
+from torch_sim.units import (
+    BAR_TO_EV_PER_ANGSTROM3,
+    BOLTZMANN_CONSTANT_EV_PER_K,
+    PS_TO_INTERNAL_TIME,
+)
 
 
 def test_initialize_momenta_basic():
@@ -85,8 +89,8 @@ def test_npt_langevin(
 ) -> None:
     n_steps = 200
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
-    external_pressure = torch.tensor(10.0, dtype=DTYPE) * MetalUnits.pressure
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(10.0, dtype=DTYPE) * BAR_TO_EV_PER_ANGSTROM3
     alpha = 40 * dt
     cell_alpha = alpha
     b_tau = 1 / (1000 * dt)
@@ -120,7 +124,7 @@ def test_npt_langevin(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     # Convert temperatures list to tensor
     temperatures_tensor = torch.stack(temperatures)
@@ -137,7 +141,7 @@ def test_npt_langevin(
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
     for mean_temp in mean_temps:
         assert (
-            abs(mean_temp - kT.item() / MetalUnits.temperature) < 150.0
+            abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 150.0
         )  # Allow for thermal fluctuations
 
     # Check energy is stable for each trajectory
@@ -159,9 +163,9 @@ def test_npt_langevin_isotropic(
     ar_double_sim_state: ts.SimState, lj_model: LennardJonesModel
 ) -> None:
     n_steps = 200
-    dt = torch.tensor(0.001, dtype=DTYPE) * MetalUnits.time
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
-    external_pressure = torch.tensor(10.0, dtype=DTYPE) * MetalUnits.pressure
+    dt = torch.tensor(0.001, dtype=DTYPE) * PS_TO_INTERNAL_TIME
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(10.0, dtype=DTYPE) * BAR_TO_EV_PER_ANGSTROM3
     alpha = 1 * dt
     cell_alpha = 10 * dt
     b_tau = 30 * dt
@@ -195,7 +199,7 @@ def test_npt_langevin_isotropic(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     temperatures_tensor = torch.stack(temperatures)
     energies_tensor = torch.stack(energies)
@@ -205,7 +209,7 @@ def test_npt_langevin_isotropic(
 
     mean_temps = torch.mean(temperatures_tensor, dim=0)
     for mean_temp in mean_temps:
-        assert abs(mean_temp - kT.item() / MetalUnits.temperature) < 150.0
+        assert abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 150.0
 
     for traj in energies_list:
         energy_std = torch.tensor(traj).std()
@@ -220,8 +224,8 @@ def test_npt_langevin_multi_kt(
 ):
     n_steps = 200
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor([300, 10_000], dtype=DTYPE) * MetalUnits.temperature
-    external_pressure = torch.tensor(0, dtype=DTYPE) * MetalUnits.pressure
+    kT = torch.tensor([300, 10_000], dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(0, dtype=DTYPE) * BAR_TO_EV_PER_ANGSTROM3
     alpha = 40 * dt
     cell_alpha = alpha
     b_tau = 1 / (1000 * dt)
@@ -255,7 +259,7 @@ def test_npt_langevin_multi_kt(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     # Convert temperatures list to tensor
     temperatures_tensor = torch.stack(temperatures)
@@ -270,13 +274,13 @@ def test_npt_langevin_multi_kt(
 
     # Check temperature is roughly maintained for each trajectory
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
-    assert torch.allclose(mean_temps, kT / MetalUnits.temperature, rtol=0.5)
+    assert torch.allclose(mean_temps, kT / BOLTZMANN_CONSTANT_EV_PER_K, rtol=0.5)
 
 
 def test_nvt_langevin(ar_double_sim_state: ts.SimState, lj_model: LennardJonesModel):
     n_steps = 100
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
 
     # Initialize integrator
     ar_double_sim_state.rng = 42
@@ -291,7 +295,7 @@ def test_nvt_langevin(ar_double_sim_state: ts.SimState, lj_model: LennardJonesMo
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     # Convert temperatures list to tensor
     temperatures_tensor = torch.stack(temperatures)
@@ -308,7 +312,7 @@ def test_nvt_langevin(ar_double_sim_state: ts.SimState, lj_model: LennardJonesMo
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
     for mean_temp in mean_temps:
         assert (
-            abs(mean_temp - kT.item() / MetalUnits.temperature) < 100.0
+            abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 100.0
         )  # Allow for thermal fluctuations
 
     # Check energy is stable for each trajectory
@@ -331,7 +335,7 @@ def test_nvt_langevin_multi_kt(
 ):
     n_steps = 200
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor([300, 10_000], dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor([300, 10_000], dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
 
     # Initialize integrator
     ar_double_sim_state.rng = 42
@@ -346,7 +350,7 @@ def test_nvt_langevin_multi_kt(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     # Convert temperatures list to tensor
     temperatures_tensor = torch.stack(temperatures)
@@ -361,14 +365,14 @@ def test_nvt_langevin_multi_kt(
 
     # Check temperature is roughly maintained for each trajectory
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
-    assert torch.allclose(mean_temps, kT / MetalUnits.temperature, rtol=0.5)
+    assert torch.allclose(mean_temps, kT / BOLTZMANN_CONSTANT_EV_PER_K, rtol=0.5)
 
 
 def test_nvt_nose_hoover(ar_double_sim_state: ts.SimState, lj_model: LennardJonesModel):
     dtype = torch.float64
     n_steps = 100
     dt = torch.tensor(0.001, dtype=dtype)
-    kT = torch.tensor(300, dtype=dtype) * MetalUnits.temperature
+    kT = torch.tensor(300, dtype=dtype) * BOLTZMANN_CONSTANT_EV_PER_K
 
     # Run dynamics for several steps
     ar_double_sim_state.rng = 42
@@ -391,7 +395,7 @@ def test_nvt_nose_hoover(ar_double_sim_state: ts.SimState, lj_model: LennardJone
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
         invariants.append(ts.nvt_nose_hoover_invariant(state, kT))
 
     # Convert temperatures list to tensor
@@ -415,7 +419,7 @@ def test_nvt_nose_hoover(ar_double_sim_state: ts.SimState, lj_model: LennardJone
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
     for mean_temp in mean_temps:
         assert (
-            abs(mean_temp - kT.item() / MetalUnits.temperature) < 100.0
+            abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 100.0
         )  # Allow for thermal fluctuations
 
     # Check energy is stable for each trajectory
@@ -450,7 +454,7 @@ def test_nvt_nose_hoover_multi_equivalent_to_single(
     dtype = torch.float64
     n_steps = 100
     dt = torch.tensor(0.001, dtype=dtype)
-    kT = torch.tensor(300, dtype=dtype) * MetalUnits.temperature
+    kT = torch.tensor(300, dtype=dtype) * BOLTZMANN_CONSTANT_EV_PER_K
 
     final_temperatures = []
     initial_momenta = []
@@ -472,7 +476,7 @@ def test_nvt_nose_hoover_multi_equivalent_to_single(
         temp = ts.calc_kT(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
-        final_temperatures.append(temp / MetalUnits.temperature)
+        final_temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     initial_momenta_tensor = torch.concat(initial_momenta)
     final_temperatures = torch.concat(final_temperatures)
@@ -492,7 +496,7 @@ def test_nvt_nose_hoover_multi_equivalent_to_single(
         masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
     )
 
-    assert torch.allclose(final_temperatures, temp / MetalUnits.temperature)
+    assert torch.allclose(final_temperatures, temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
 
 def test_nvt_nose_hoover_multi_kt(
@@ -501,7 +505,7 @@ def test_nvt_nose_hoover_multi_kt(
     dtype = torch.float64
     n_steps = 200
     dt = torch.tensor(0.001, dtype=dtype)
-    kT = torch.tensor([300, 10_000], dtype=dtype) * MetalUnits.temperature
+    kT = torch.tensor([300, 10_000], dtype=dtype) * BOLTZMANN_CONSTANT_EV_PER_K
 
     # Run dynamics for several steps
     ar_double_sim_state.rng = 42
@@ -519,7 +523,7 @@ def test_nvt_nose_hoover_multi_kt(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
         invariants.append(ts.nvt_nose_hoover_invariant(state, kT))
 
     # Convert temperatures list to tensor
@@ -537,7 +541,7 @@ def test_nvt_nose_hoover_multi_kt(
 
     # Check temperature is roughly maintained for each trajectory
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
-    assert torch.allclose(mean_temps, kT / MetalUnits.temperature, rtol=0.5)
+    assert torch.allclose(mean_temps, kT / BOLTZMANN_CONSTANT_EV_PER_K, rtol=0.5)
 
     # Check invariant conservation for each system
     for traj_idx in range(invariants_tensor.shape[1]):
@@ -551,7 +555,7 @@ def test_nvt_nose_hoover_multi_kt(
 def test_nvt_vrescale(ar_double_sim_state: ts.SimState, lj_model: LennardJonesModel):
     n_steps = 100
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
 
     # Initialize integrator
     ar_double_sim_state.rng = 42
@@ -566,7 +570,7 @@ def test_nvt_vrescale(ar_double_sim_state: ts.SimState, lj_model: LennardJonesMo
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     # Convert temperatures list to tensor
     temperatures_tensor = torch.stack(temperatures)
@@ -583,7 +587,7 @@ def test_nvt_vrescale(ar_double_sim_state: ts.SimState, lj_model: LennardJonesMo
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
     for mean_temp in mean_temps:
         assert (
-            abs(mean_temp - kT.item() / MetalUnits.temperature) < 100.0
+            abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 100.0
         )  # Allow for thermal fluctuations
 
     # Check energy is stable for each trajectory
@@ -606,8 +610,8 @@ def test_npt_crescale_triclinic(
 ) -> None:
     n_steps = 200
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
-    external_pressure = torch.tensor(10.0, dtype=DTYPE) * MetalUnits.pressure
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(10.0, dtype=DTYPE) * BAR_TO_EV_PER_ANGSTROM3
     tau_p = torch.tensor(0.1, dtype=DTYPE)
     isothermal_compressibility = torch.tensor(1e-4, dtype=DTYPE)
 
@@ -639,7 +643,7 @@ def test_npt_crescale_triclinic(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     # Convert temperatures list to tensor
     temperatures_tensor = torch.stack(temperatures)
@@ -656,7 +660,7 @@ def test_npt_crescale_triclinic(
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
     for mean_temp in mean_temps:
         assert (
-            abs(mean_temp - kT.item() / MetalUnits.temperature) < 150.0
+            abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 150.0
         )  # Allow for thermal fluctuations
 
     # Check energy is stable for each trajectory
@@ -680,13 +684,13 @@ def test_npt_crescale_triclinic_shear(
     """Test anisotropic crescale with off-diagonal (shear) external stress."""
     n_steps = 200
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
     tau_p = torch.tensor(0.1, dtype=DTYPE)
     isothermal_compressibility = torch.tensor(1e-4, dtype=DTYPE)
 
     # Full 3x3 external pressure tensor with shear components
-    p_hydro = 10.0 * MetalUnits.pressure
-    shear = 1.0 * MetalUnits.pressure
+    p_hydro = 10.0 * BAR_TO_EV_PER_ANGSTROM3
+    shear = 1.0 * BAR_TO_EV_PER_ANGSTROM3
     external_pressure = torch.tensor(
         [
             [p_hydro, shear, 0.0],
@@ -729,7 +733,7 @@ def test_npt_crescale_triclinic_shear(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     temperatures_tensor = torch.stack(temperatures)
     energies_tensor = torch.stack(energies)
@@ -740,7 +744,7 @@ def test_npt_crescale_triclinic_shear(
     # Check temperature is roughly maintained
     mean_temps = torch.mean(temperatures_tensor, dim=0)
     for mean_temp in mean_temps:
-        assert abs(mean_temp - kT.item() / MetalUnits.temperature) < 150.0
+        assert abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 150.0
 
     # Check energy is stable
     for traj in energies_tensor.T:
@@ -764,8 +768,8 @@ def test_npt_crescale_isotropic(
 ) -> None:
     n_steps = 200
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
-    external_pressure = torch.tensor(10.0, dtype=DTYPE) * MetalUnits.pressure
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(10.0, dtype=DTYPE) * BAR_TO_EV_PER_ANGSTROM3
     tau_p = torch.tensor(0.1, dtype=DTYPE)
     isothermal_compressibility = torch.tensor(1e-4, dtype=DTYPE)
 
@@ -797,7 +801,7 @@ def test_npt_crescale_isotropic(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     # Convert temperatures list to tensor
     temperatures_tensor = torch.stack(temperatures)
@@ -814,7 +818,7 @@ def test_npt_crescale_isotropic(
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
     for mean_temp in mean_temps:
         assert (
-            abs(mean_temp - kT.item() / MetalUnits.temperature) < 150.0
+            abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 150.0
         )  # Allow for thermal fluctuations
 
     # Check energy is stable for each trajectory
@@ -836,8 +840,8 @@ def test_npt_nose_hoover(ar_double_sim_state: ts.SimState, lj_model: LennardJone
     dtype = torch.float64
     n_steps = 100
     dt = torch.tensor(0.001, dtype=dtype)
-    kT = torch.tensor(300, dtype=dtype) * MetalUnits.temperature
-    external_pressure = torch.tensor(0.0, dtype=dtype) * MetalUnits.pressure
+    kT = torch.tensor(300, dtype=dtype) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(0.0, dtype=dtype) * BAR_TO_EV_PER_ANGSTROM3
 
     # Run dynamics for several steps
     ar_double_sim_state.rng = 42
@@ -865,7 +869,7 @@ def test_npt_nose_hoover(ar_double_sim_state: ts.SimState, lj_model: LennardJone
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
         invariants.append(
             ts.npt_nose_hoover_isotropic_invariant(state, kT, external_pressure)
         )
@@ -891,7 +895,7 @@ def test_npt_nose_hoover(ar_double_sim_state: ts.SimState, lj_model: LennardJone
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
     for mean_temp in mean_temps:
         assert (
-            abs(mean_temp - kT.item() / MetalUnits.temperature) < 100.0
+            abs(mean_temp - kT.item() / BOLTZMANN_CONSTANT_EV_PER_K) < 100.0
         )  # Allow for thermal fluctuations
 
     # Check energy is stable for each trajectory (NPT allows energy fluctuations)
@@ -925,16 +929,16 @@ def test_npt_nose_hoover_step_accepts_float_inputs(
         state=ar_double_sim_state,
         model=lj_model,
         dt=0.001,
-        kT=300 * MetalUnits.temperature,
-        external_pressure=0.0 * MetalUnits.pressure,
+        kT=300 * BOLTZMANN_CONSTANT_EV_PER_K,
+        external_pressure=0.0 * BAR_TO_EV_PER_ANGSTROM3,
     )
 
     next_state = ts.npt_nose_hoover_isotropic_step(
         state=state,
         model=lj_model,
         dt=0.001,
-        kT=300 * MetalUnits.temperature,
-        external_pressure=0.0 * MetalUnits.pressure,
+        kT=300 * BOLTZMANN_CONSTANT_EV_PER_K,
+        external_pressure=0.0 * BAR_TO_EV_PER_ANGSTROM3,
     )
     assert next_state.positions.shape == state.positions.shape
     assert next_state.momenta.shape == state.momenta.shape
@@ -949,8 +953,8 @@ def test_npt_nose_hoover_multi_equivalent_to_single(
     dtype = torch.float64
     n_steps = 100
     dt = torch.tensor(0.001, dtype=dtype)
-    kT = torch.tensor(300, dtype=dtype) * MetalUnits.temperature
-    external_pressure = torch.tensor(0.0, dtype=dtype) * MetalUnits.pressure
+    kT = torch.tensor(300, dtype=dtype) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(0.0, dtype=dtype) * BAR_TO_EV_PER_ANGSTROM3
 
     final_temperatures = []
     initial_momenta = []
@@ -979,7 +983,7 @@ def test_npt_nose_hoover_multi_equivalent_to_single(
         temp = ts.calc_kT(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
-        final_temperatures.append(temp / MetalUnits.temperature)
+        final_temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
     initial_momenta_tensor = torch.concat(initial_momenta)
     final_temperatures = torch.concat(final_temperatures)
@@ -1006,7 +1010,7 @@ def test_npt_nose_hoover_multi_equivalent_to_single(
         masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
     )
 
-    assert torch.allclose(final_temperatures, temp / MetalUnits.temperature)
+    assert torch.allclose(final_temperatures, temp / BOLTZMANN_CONSTANT_EV_PER_K)
 
 
 def test_npt_nose_hoover_multi_kt(
@@ -1015,8 +1019,8 @@ def test_npt_nose_hoover_multi_kt(
     dtype = torch.float64
     n_steps = 200
     dt = torch.tensor(0.001, dtype=dtype)
-    kT = torch.tensor([300, 10_000], dtype=dtype) * MetalUnits.temperature
-    external_pressure = torch.tensor(0.0, dtype=dtype) * MetalUnits.pressure
+    kT = torch.tensor([300, 10_000], dtype=dtype) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(0.0, dtype=dtype) * BAR_TO_EV_PER_ANGSTROM3
 
     # Run dynamics for several steps
     ar_double_sim_state.rng = 42
@@ -1044,7 +1048,7 @@ def test_npt_nose_hoover_multi_kt(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
         energies.append(state.energy)
-        temperatures.append(temp / MetalUnits.temperature)
+        temperatures.append(temp / BOLTZMANN_CONSTANT_EV_PER_K)
         invariants.append(
             ts.npt_nose_hoover_isotropic_invariant(state, kT, external_pressure)
         )
@@ -1064,7 +1068,7 @@ def test_npt_nose_hoover_multi_kt(
 
     # Check temperature is roughly maintained for each trajectory
     mean_temps = torch.mean(temperatures_tensor, dim=0)  # Mean temp for each trajectory
-    assert torch.allclose(mean_temps, kT / MetalUnits.temperature, rtol=0.5)
+    assert torch.allclose(mean_temps, kT / BOLTZMANN_CONSTANT_EV_PER_K, rtol=0.5)
 
     # Check invariant conservation for each system
     for traj_idx in range(invariants_tensor.shape[1]):
@@ -1078,7 +1082,7 @@ def test_npt_nose_hoover_multi_kt(
 def test_nve(ar_double_sim_state: ts.SimState, lj_model: LennardJonesModel):
     n_steps = 100
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
 
     # Initialize integrator
     ar_double_sim_state.rng = 42
@@ -1122,7 +1126,7 @@ def test_compare_single_vs_batched_integrators(
     final_states = {}
     for state_name, state in initial_states.items():
         # Initialize integrator
-        kT = torch.tensor(100.0) * MetalUnits.temperature
+        kT = torch.tensor(100.0) * BOLTZMANN_CONSTANT_EV_PER_K
         dt = torch.tensor(0.001)  # Small timestep for stability
 
         # Initialize momenta (even if zero) and get forces
@@ -1198,7 +1202,7 @@ def test_nvt_langevin_reproducibility(
     """Two runs with the same prng seed must produce identical trajectories."""
     n_steps = 10
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300, dtype=DTYPE) * MetalUnits.temperature
+    kT = torch.tensor(300, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
 
     def _run(seed: int) -> tuple[torch.Tensor, torch.Tensor]:
         ar_double_sim_state.rng = seed
@@ -1225,8 +1229,8 @@ def test_npt_langevin_reproducibility(
     """Two runs with the same seed must produce identical NPT Langevin trajectories."""
     n_steps = 20
     dt = torch.tensor(0.001, dtype=DTYPE)
-    kT = torch.tensor(300.0, dtype=DTYPE) * MetalUnits.temperature
-    external_pressure = torch.tensor(10, dtype=DTYPE) * MetalUnits.pressure
+    kT = torch.tensor(300.0, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
+    external_pressure = torch.tensor(10, dtype=DTYPE) * BAR_TO_EV_PER_ANGSTROM3
     alpha = 40 * dt
     cell_alpha = alpha
     b_tau = dt  # make this very small to ensure the barostat is active
