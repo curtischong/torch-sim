@@ -1,5 +1,6 @@
 # ruff: noqa: PT011
 import itertools
+from math import sqrt
 
 import numpy as np
 import pytest
@@ -12,7 +13,7 @@ import torch_sim as ts
 import torch_sim.transforms as tst
 from tests.conftest import DEVICE, DTYPE
 from torch_sim.models.lennard_jones import LennardJonesModel
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K, PS_TO_INTERNAL_TIME
+from torch_sim.units import bc, uc
 
 
 def test_inverse_box_scalar() -> None:
@@ -1396,8 +1397,10 @@ def test_build_linked_cell_neighborhood_basic() -> None:
 
 def test_unwrap_positions(ar_double_sim_state: ts.SimState, lj_model: LennardJonesModel):
     n_steps = 50
-    dt = torch.tensor(0.001, dtype=DTYPE) * PS_TO_INTERNAL_TIME
-    kT = torch.tensor(300, dtype=DTYPE) * BOLTZMANN_CONSTANT_EV_PER_K
+    dt = torch.tensor(0.001, dtype=DTYPE) * (
+        sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s
+    )
+    kT = torch.tensor(300, dtype=DTYPE) * (bc.k_B / bc.e)
 
     # Same cell
     state = ts.nvt_langevin_init(state=ar_double_sim_state, model=lj_model, kT=kT)

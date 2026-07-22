@@ -2,7 +2,7 @@
 """Physical constants and unit conversion factors used by TorchSim."""
 
 from enum import Enum
-from math import pi, sqrt
+from math import pi
 from typing import Self
 
 
@@ -60,10 +60,3 @@ class UnitConversion(float, Enum):
 
 
 uc = UnitConversion
-
-# TorchSim state uses Angstrom, eV, and atomic mass units. These are the only
-# non-trivial factors needed to convert the public MD API (K, ps, bar) to the
-# coherent internal values required by the low-level integrators.
-BOLTZMANN_CONSTANT_EV_PER_K = bc.k_B / bc.e
-PS_TO_INTERNAL_TIME = sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s
-BAR_TO_EV_PER_ANGSTROM3 = uc.bar_to_pa * uc.Ang3_to_met3 / bc.e

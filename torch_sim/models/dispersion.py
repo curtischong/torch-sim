@@ -57,9 +57,9 @@ class D3DispersionModel(ModelInterface):
     """DFT-D3(BJ) dispersion correction as a :class:`ModelInterface`.
 
     Computes DFT-D3 energies, forces, and (optionally) stresses via the
-    ``nvalchemiops`` Warp GPU/CPU kernels.  All user-facing quantities are in
-    metal units (Angstrom / eV); unit conversion to and from atomic units
-    (Bohr / Hartree) is handled internally.
+    ``nvalchemiops`` Warp GPU/CPU kernels. User-facing distances are in angstrom
+    and energies are in eV; conversion to and from atomic units (Bohr / Hartree)
+    is handled internally.
 
     Functional-dependent BJ damping parameters (``a1``, ``a2``, ``s8``, ``s6``)
     can be looked up from the canonical parameter table:

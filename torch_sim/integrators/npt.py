@@ -21,7 +21,7 @@ from torch_sim.integrators.md import (
 from torch_sim.integrators.nvt import _vrescale_update
 from torch_sim.models.interface import ModelInterface
 from torch_sim.state import SimState
-from torch_sim.units import BAR_TO_EV_PER_ANGSTROM3
+from torch_sim.units import bc, uc
 
 
 logger = logging.getLogger(__name__)
@@ -2934,7 +2934,8 @@ def npt_crescale_init(
     # Set default values if not provided
     tau_p = torch.as_tensor(tau_p or 3 * dt, device=device, dtype=dtype)  # 5ps for dt=1fs
     isothermal_compressibility = torch.as_tensor(
-        isothermal_compressibility or 1e-6 / BAR_TO_EV_PER_ANGSTROM3,  # 1e-6 bar^-1
+        isothermal_compressibility
+        or 1e-6 / (uc.bar_to_pa * uc.Ang3_to_met3 / bc.e),  # 1e-6 bar^-1
         device=device,
         dtype=dtype,  # (eV/A^3)^-1
     )

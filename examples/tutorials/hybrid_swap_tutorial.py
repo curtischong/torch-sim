@@ -125,9 +125,9 @@ Now we'll initialize both the MD and Monte Carlo components. We:
 """
 
 # %%
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K
+from torch_sim.units import bc
 
-kT = 1000 * BOLTZMANN_CONSTANT_EV_PER_K
+kT = 1000 * (bc.k_B / bc.e)
 
 # Initialize NVT Langevin dynamics state
 state.rng = 42

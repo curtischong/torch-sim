@@ -16,6 +16,7 @@ This script demonstrates molecular dynamics simulations with:
 import itertools
 import os
 import time
+from math import sqrt
 
 import torch
 from ase.build import bulk
@@ -25,11 +26,7 @@ import torch_sim as ts
 from torch_sim.models.lennard_jones import LennardJonesModel
 from torch_sim.models.mace import MaceModel
 from torch_sim.telemetry import configure_logging, get_logger
-from torch_sim.units import (
-    BAR_TO_EV_PER_ANGSTROM3,
-    BOLTZMANN_CONSTANT_EV_PER_K,
-    PS_TO_INTERNAL_TIME,
-)
+from torch_sim.units import bc, uc
 
 
 configure_logging(log_file="3_dynamics.log")
@@ -117,8 +114,12 @@ lj_model = LennardJonesModel(
 results = lj_model(state)
 
 # Set up NVE simulation
-kT = torch.tensor(80 * BOLTZMANN_CONSTANT_EV_PER_K, device=device, dtype=dtype)
-dt = torch.tensor(0.001 * PS_TO_INTERNAL_TIME, device=device, dtype=dtype)
+kT = torch.tensor(80 * (bc.k_B / bc.e), device=device, dtype=dtype)
+dt = torch.tensor(
+    0.001 * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s),
+    device=device,
+    dtype=dtype,
+)
 
 # Initialize NVE integrator
 state.rng = 1
@@ -184,10 +185,12 @@ state = ts.SimState(
 results = mace_model(state)
 
 # Setup NVE MD simulation parameters
-kT = torch.tensor(
-    1000 * BOLTZMANN_CONSTANT_EV_PER_K, device=device, dtype=dtype
-)  # 1000 K
-dt = torch.tensor(0.002 * PS_TO_INTERNAL_TIME, device=device, dtype=dtype)  # 2 fs
+kT = torch.tensor(1000 * (bc.k_B / bc.e), device=device, dtype=dtype)  # 1000 K
+dt = torch.tensor(
+    0.002 * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s),
+    device=device,
+    dtype=dtype,
+)  # 2 fs
 
 # Initialize NVE integrator
 state.rng = 1
@@ -230,11 +233,17 @@ state = ts.SimState(
     positions=positions, masses=masses, cell=cell, atomic_numbers=atomic_numbers, pbc=True
 )
 
-dt = torch.tensor(0.002 * PS_TO_INTERNAL_TIME, device=device, dtype=dtype)  # 2 fs
-kT = torch.tensor(
-    1000 * BOLTZMANN_CONSTANT_EV_PER_K, device=device, dtype=dtype
-)  # 1000 K
-gamma = torch.tensor(10 / PS_TO_INTERNAL_TIME, device=device, dtype=dtype)  # ps^-1
+dt = torch.tensor(
+    0.002 * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s),
+    device=device,
+    dtype=dtype,
+)  # 2 fs
+kT = torch.tensor(1000 * (bc.k_B / bc.e), device=device, dtype=dtype)  # 1000 K
+gamma = torch.tensor(
+    10 / (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s),
+    device=device,
+    dtype=dtype,
+)  # ps^-1
 
 # Initialize NVT Langevin integrator
 state.rng = 1
@@ -243,19 +252,15 @@ state = ts.nvt_langevin_init(model=mace_model, state=state, kT=kT)
 log.info("Starting NVT Langevin simulation...")
 for step in range(N_steps):
     if step % 100 == 0:
-        temp = (
-            ts.calc_kT(
-                masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
-            )
-            / BOLTZMANN_CONSTANT_EV_PER_K
-        )
+        temp = ts.calc_kT(
+            masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
+        ) / (bc.k_B / bc.e)
         log.info(f"Step {step}: Temperature: {temp.item():.4f} K")
     state = ts.nvt_langevin_step(state=state, model=mace_model, dt=dt, kT=kT, gamma=gamma)
 
-final_temp = (
-    ts.calc_kT(masses=state.masses, momenta=state.momenta, system_idx=state.system_idx)
-    / BOLTZMANN_CONSTANT_EV_PER_K
-)
+final_temp = ts.calc_kT(
+    masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
+) / (bc.k_B / bc.e)
 log.info(f"Final temperature: {final_temp.item():.4f} K")
 
 
@@ -274,32 +279,30 @@ state = ts.io.atoms_to_state(si_dc, device=device, dtype=dtype)
 # Run initial inference
 results = mace_model(state)
 
-dt = torch.tensor(0.002 * PS_TO_INTERNAL_TIME, device=device, dtype=dtype)  # 2 fs
-kT = torch.tensor(
-    1000 * BOLTZMANN_CONSTANT_EV_PER_K, device=device, dtype=dtype
-)  # 1000 K
+dt = torch.tensor(
+    0.002 * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s),
+    device=device,
+    dtype=dtype,
+)  # 2 fs
+kT = torch.tensor(1000 * (bc.k_B / bc.e), device=device, dtype=dtype)  # 1000 K
 
 state = ts.nvt_nose_hoover_init(state=state, model=mace_model, kT=kT, dt=dt)
 
 log.info("Starting NVT Nose-Hoover simulation...")
 for step in range(N_steps):
     if step % 100 == 0:
-        temp = (
-            ts.calc_kT(
-                masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
-            )
-            / BOLTZMANN_CONSTANT_EV_PER_K
-        )
+        temp = ts.calc_kT(
+            masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
+        ) / (bc.k_B / bc.e)
         invariant = float(ts.nvt_nose_hoover_invariant(state, kT=kT))
         log.info(
             f"Step {step}: Temperature: {temp.item():.4f} K, Invariant: {invariant:.4f}"
         )
     state = ts.nvt_nose_hoover_step(state=state, model=mace_model, dt=dt, kT=kT)
 
-final_temp = (
-    ts.calc_kT(masses=state.masses, momenta=state.momenta, system_idx=state.system_idx)
-    / BOLTZMANN_CONSTANT_EV_PER_K
-)
+final_temp = ts.calc_kT(
+    masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
+) / (bc.k_B / bc.e)
 log.info(f"Final temperature: {final_temp.item():.4f} K")
 
 
@@ -330,10 +333,10 @@ results = mace_model_stress(state)
 
 N_steps_nvt = 100 if SMOKE_TEST else 1_000
 N_steps_npt = 100 if SMOKE_TEST else 1_000
-dt = 0.001 * PS_TO_INTERNAL_TIME  # 1 fs
-kT = torch.tensor(300 * BOLTZMANN_CONSTANT_EV_PER_K, device=device, dtype=dtype)  # 300 K
+dt = 0.001 * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s)  # 1 fs
+kT = torch.tensor(300 * (bc.k_B / bc.e), device=device, dtype=dtype)  # 300 K
 target_pressure = torch.tensor(
-    0.0 * BAR_TO_EV_PER_ANGSTROM3, device=device, dtype=dtype
+    0.0 * (uc.bar_to_pa * uc.Ang3_to_met3 / bc.e), device=device, dtype=dtype
 )  # 0 bar
 
 # Initialize NPT with NVT equilibration
@@ -344,12 +347,9 @@ state = ts.npt_nose_hoover_isotropic_init(
 log.info("Running NVT equilibration phase...")
 for step in range(N_steps_nvt):
     if step % 100 == 0:
-        temp = (
-            ts.calc_kT(
-                masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
-            )
-            / BOLTZMANN_CONSTANT_EV_PER_K
-        )
+        temp = ts.calc_kT(
+            masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
+        ) / (bc.k_B / bc.e)
         invariant = float(
             ts.npt_nose_hoover_isotropic_invariant(
                 state, kT=kT, external_pressure=target_pressure
@@ -374,12 +374,9 @@ state = ts.npt_nose_hoover_isotropic_init(
 log.info("Running NPT simulation...")
 for step in range(N_steps_npt):
     if step % 100 == 0:
-        temp = (
-            ts.calc_kT(
-                masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
-            )
-            / BOLTZMANN_CONSTANT_EV_PER_K
-        )
+        temp = ts.calc_kT(
+            masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
+        ) / (bc.k_B / bc.e)
         invariant = float(
             ts.npt_nose_hoover_isotropic_invariant(
                 state, kT=kT, external_pressure=target_pressure
@@ -405,10 +402,9 @@ for step in range(N_steps_npt):
         external_pressure=target_pressure,
     )
 
-final_temp = (
-    ts.calc_kT(masses=state.masses, momenta=state.momenta, system_idx=state.system_idx)
-    / BOLTZMANN_CONSTANT_EV_PER_K
-)
+final_temp = ts.calc_kT(
+    masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
+) / (bc.k_B / bc.e)
 log.info(f"Final temperature: {final_temp.item():.4f} K")
 
 final_stress = mace_model_stress(state)["stress"]

@@ -172,19 +172,21 @@ for step in range(5):
 """
 ## NVT Langevin Dynamics
 
-Similarly, we can do molecular dynamics of the systems. We need to make sure we are
-using correct units for the integrator. TorchSim provides a `units.py` module to
-help with the units system and conversions. All currently supported models implement
-TorchSim internal units, so we must convert our units into
-that system.
+Similarly, we can do molecular dynamics of the systems. Low-level integrators consume
+thermal energy and a timestep coherent with the state's eV, angstrom, and amu values.
+Here those values are derived directly from the physical constants.
 """
 
 # %%
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K, PS_TO_INTERNAL_TIME
+from math import sqrt
 
-dt = 0.002 * PS_TO_INTERNAL_TIME  # Timestep (ps)
-kT = 300 * BOLTZMANN_CONSTANT_EV_PER_K  # Initial temperature (K)
-gamma = 10 / PS_TO_INTERNAL_TIME  # Langevin friction coefficient (ps^-1)
+from torch_sim.units import bc, uc
+
+dt = 0.002 * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s)  # Timestep (ps)
+kT = 300 * (bc.k_B / bc.e)  # Initial temperature (K)
+gamma = 10 / (
+    sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s
+)  # Langevin friction coefficient (ps^-1)
 
 
 # %% [markdown]
@@ -218,7 +220,7 @@ for step in range(30):
         temp_E_units = ts.calc_kT(
             masses=state.masses, momenta=state.momenta, system_idx=state.system_idx
         )
-        temp = temp_E_units / BOLTZMANN_CONSTANT_EV_PER_K
+        temp = temp_E_units / (bc.k_B / bc.e)
         print(f"{step=}: Temperature: {temp}")
 
 

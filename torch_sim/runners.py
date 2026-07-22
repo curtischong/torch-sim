@@ -11,6 +11,7 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import chain
+from math import sqrt
 from typing import Any
 
 import torch
@@ -25,7 +26,7 @@ from torch_sim.optimizers import OPTIM_REGISTRY, FireState, Optimizer, OptimStat
 from torch_sim.state import _CANONICAL_MODEL_KEYS, SimState
 from torch_sim.trajectory import TrajectoryReporter
 from torch_sim.typing import StateLike
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K, PS_TO_INTERNAL_TIME
+from torch_sim.units import bc, uc
 
 
 logger = logging.getLogger(__name__)
@@ -301,8 +302,12 @@ def integrate[T: SimState](  # noqa: C901
     )
     dtype, device = initial_state.dtype, initial_state.device
     kTs = _normalize_temperature_tensor(temperature, n_steps, initial_state)
-    kTs = kTs * BOLTZMANN_CONSTANT_EV_PER_K
-    dt = torch.as_tensor(timestep * PS_TO_INTERNAL_TIME, dtype=dtype, device=device)
+    kTs = kTs * (bc.k_B / bc.e)
+    dt = torch.as_tensor(
+        timestep * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s),
+        dtype=dtype,
+        device=device,
+    )
 
     # Handle both string names and direct function tuples
     if isinstance(integrator, Integrator):

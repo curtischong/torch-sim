@@ -11,7 +11,7 @@ from torch_sim._duecredit import dcite
 from torch_sim.models.interface import ModelInterface
 from torch_sim.quantities import calc_kT
 from torch_sim.state import SimState
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K
+from torch_sim.units import bc
 
 
 logger = logging.getLogger(__name__)
@@ -72,18 +72,13 @@ class MDState(SimState):
             constraint.adjust_momenta(self, new_momenta)
         self.momenta = new_momenta
 
-    def calc_temperature(
-        self, units: float = BOLTZMANN_CONSTANT_EV_PER_K
-    ) -> torch.Tensor:
+    def calc_temperature(self) -> torch.Tensor:
         """Calculate temperature from momenta, masses, and system indices.
 
-        Args:
-            units: Energy per temperature unit. Defaults to eV/K.
-
         Returns:
-            torch.Tensor: Calculated temperature
+            torch.Tensor: Calculated temperature in kelvin.
         """
-        return self.calc_kT() / units
+        return self.calc_kT() / (bc.k_B / bc.e)
 
     def calc_kT(self) -> torch.Tensor:  # noqa: N802
         """Calculate kT from momenta, masses, and system indices.

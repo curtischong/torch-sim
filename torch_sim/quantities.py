@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K
+from torch_sim.units import bc
 
 
 if TYPE_CHECKING:
@@ -73,7 +73,6 @@ def calc_temperature(
     velocities: torch.Tensor | None = None,
     system_idx: torch.Tensor | None = None,
     dof_per_system: torch.Tensor | None = None,
-    units: float = BOLTZMANN_CONSTANT_EV_PER_K,
 ) -> torch.Tensor:
     """Calculate temperature from momenta/velocities and masses.
 
@@ -85,10 +84,8 @@ def calc_temperature(
         each particle
         dof_per_system (torch.Tensor | None): Optional tensor indicating
         degrees of freedom per system
-        units (object): Units to return the temperature in
-
     Returns:
-        torch.Tensor: Temperature value in specified units (default, K)
+        torch.Tensor: Temperature in kelvin.
     """
     kT = calc_kT(
         masses=masses,
@@ -97,7 +94,7 @@ def calc_temperature(
         system_idx=system_idx,
         dof_per_system=dof_per_system,
     )
-    return kT / units
+    return kT / (bc.k_B / bc.e)
 
 
 # @torch.jit.script

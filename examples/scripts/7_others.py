@@ -14,6 +14,7 @@ This script demonstrates:
 # ///
 
 import os
+from math import sqrt
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,7 +28,7 @@ from torch_sim.models.lennard_jones import LennardJonesModel
 from torch_sim.neighbors import torch_nl_linked_cell, torch_nl_n2
 from torch_sim.properties.correlations import VelocityAutoCorrelation
 from torch_sim.telemetry import configure_logging, get_logger
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K, PS_TO_INTERNAL_TIME
+from torch_sim.units import bc, uc
 
 
 configure_logging(log_file="7_others.log")
@@ -146,8 +147,12 @@ log.info(f"  Cutoff: {cutoff:.2f} Å")
 
 # Simulation parameters
 timestep = 0.001  # ps (1 fs)
-dt = torch.tensor(timestep * PS_TO_INTERNAL_TIME, device=device, dtype=dtype)
-temp_kT = temperature * BOLTZMANN_CONSTANT_EV_PER_K  # noqa: N816
+dt = torch.tensor(
+    timestep * (sqrt(bc.e / (bc.amu * uc.Ang2_to_met2)) * uc.ps_to_s),
+    device=device,
+    dtype=dtype,
+)
+temp_kT = temperature * (bc.k_B / bc.e)  # noqa: N816
 kT = torch.tensor(temp_kT, device=device, dtype=dtype)
 
 # Initialize NVE integrator

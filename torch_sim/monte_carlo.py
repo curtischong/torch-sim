@@ -13,7 +13,7 @@ Examples:
     >>> import torch_sim as ts
     >>> mc_state = ts.swap_mc_init(model, initial_state, seed=42)
     >>> for _ in range(1000):
-    ...     mc_state = ts.swap_mc_step(model, mc_state, kT=0.1 * units.energy)
+    ...     mc_state = ts.swap_mc_step(model, mc_state, kT=0.1)  # eV
 """
 
 from dataclasses import dataclass, field

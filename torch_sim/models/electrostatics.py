@@ -52,8 +52,8 @@ class DSFCoulombModel(ModelInterface):
     """Damped Shifted Force electrostatics as a :class:`ModelInterface`.
 
     Uses the ``nvalchemiops`` DSF kernel for O(N) electrostatic energy,
-    forces, and (optionally) stress.  All user-facing quantities are in
-    metal units (Angstrom / eV); the Coulomb constant ``ke`` is baked in.
+    forces, and (optionally) stress. User-facing distances are in angstrom and
+    energies are in eV; the Coulomb constant ``ke`` is baked in.
 
     Per-atom partial charges are read from ``state.partial_charges``.
 
@@ -157,8 +157,8 @@ class EwaldModel(ModelInterface):
     """Classical Ewald summation as a :class:`ModelInterface`.
 
     Uses the ``nvalchemiops`` Ewald kernel for exact periodic electrostatics.
-    Returns per-atom energies that are aggregated to per-system.  All
-    user-facing quantities are in metal units (Angstrom / eV).
+    Returns per-atom energies that are aggregated to per-system. User-facing
+    distances are in angstrom and energies are in eV.
 
     Per-atom partial charges are read from ``state.partial_charges``.
 
@@ -271,9 +271,8 @@ class PMEModel(ModelInterface):
     """Particle Mesh Ewald electrostatics as a :class:`ModelInterface`.
 
     Uses the ``nvalchemiops`` PME kernel for O(N log N) periodic
-    electrostatics.  Returns per-atom energies that are aggregated to
-    per-system.  All user-facing quantities are in metal units
-    (Angstrom / eV).
+    electrostatics. Returns per-atom energies that are aggregated to per-system.
+    User-facing distances are in angstrom and energies are in eV.
 
     Per-atom partial charges are read from ``state.partial_charges``.
 

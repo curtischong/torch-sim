@@ -60,11 +60,11 @@ References:
 
 Examples:
     >>> import torch_sim as ts
-    >>> state = ts.nvt_langevin_init(initial_state, model, kT=300.0 * units.temperature)
+    >>> kT = 0.025852  # 300 K in eV
+    >>> dt = 0.098227  # 1 fs in the time unit coherent with eV, angstrom, and amu
+    >>> state = ts.nvt_langevin_init(initial_state, model, kT=kT)
     >>> for _ in range(1000):
-    ...     state = ts.nvt_langevin_step(
-    ...         state, model, dt=1e-3 * units.time, kT=300.0 * units.temperature
-    ...     )
+    ...     state = ts.nvt_langevin_step(state, model, dt=dt, kT=kT)
 
 Notes:
     All integrators support batched operations for efficient parallel simulation

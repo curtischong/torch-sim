@@ -400,7 +400,7 @@ print(f"Any converged? {torch.any(convergence_tensor).item()}")
 For convenience TorchSim provides constructors for common convergence functions.
 """
 
-# %% we use metal units for these functions
+# %% tolerances use the same eV and angstrom quantities as model outputs
 energy_convergence_fn = ts.generate_energy_convergence_fn(energy_tol=1e-6)
 force_convergence_fn = ts.generate_force_convergence_fn(force_tol=1e-3)
 

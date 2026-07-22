@@ -3,13 +3,7 @@ import torch
 
 import torch_sim as ts
 from torch_sim.state import get_attrs_for_scope
-from torch_sim.units import (
-    BAR_TO_EV_PER_ANGSTROM3,
-    BOLTZMANN_CONSTANT_EV_PER_K,
-    PS_TO_INTERNAL_TIME,
-    BaseConstant,
-    UnitConversion,
-)
+from torch_sim.units import BaseConstant, UnitConversion
 
 
 def _make_state_with_extras(n_atoms: int = 4, n_systems: int = 2) -> ts.SimState:
@@ -376,8 +370,3 @@ class TestUnitsEnum:
         gpa = UnitConversion.eV_per_Ang3_to_GPa
         assert gpa > 100  # ~160.2
         assert isinstance(gpa + 0.0, float)
-
-    def test_internal_unit_conversion_constants(self):
-        assert pytest.approx(8.6173303e-5) == BOLTZMANN_CONSTANT_EV_PER_K
-        assert pytest.approx(98.22695) == PS_TO_INTERNAL_TIME
-        assert pytest.approx(6.2415091e-7) == BAR_TO_EV_PER_ANGSTROM3

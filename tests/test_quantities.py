@@ -12,7 +12,7 @@ from torch_sim.quantities import (
     calc_kT,
     calc_temperature,
 )
-from torch_sim.units import BOLTZMANN_CONSTANT_EV_PER_K
+from torch_sim.units import bc
 
 
 class TestHeatFlux:
@@ -275,4 +275,4 @@ def test_calc_temperature(single_system_data: dict[str, Tensor]) -> None:
         masses=single_system_data["masses"],
         velocities=single_system_data["velocities"],
     )
-    assert torch.allclose(temp, kt / BOLTZMANN_CONSTANT_EV_PER_K)
+    assert torch.allclose(temp, kt / (bc.k_B / bc.e))
