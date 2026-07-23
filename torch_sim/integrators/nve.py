@@ -5,7 +5,9 @@ from typing import Any
 import torch
 
 from torch_sim.integrators.md import (
+    EnergyArg,
     MDState,
+    TimeArg,
     initialize_momenta,
     momentum_step,
     position_step,
@@ -18,7 +20,7 @@ def nve_init(
     state: SimState,
     model: ModelInterface,
     *,
-    kT: float | torch.Tensor,
+    kT: EnergyArg,
     **_kwargs: Any,
 ) -> MDState:
     """Initialize an NVE state from input data.
@@ -68,7 +70,7 @@ def nve_init(
 
 
 def nve_step(
-    state: MDState, model: ModelInterface, *, dt: float | torch.Tensor, **_kwargs: Any
+    state: MDState, model: ModelInterface, *, dt: TimeArg, **_kwargs: Any
 ) -> MDState:
     r"""Perform one complete NVE (microcanonical) integration step.
 

@@ -11,6 +11,7 @@ import torch
 import torch_sim as ts
 from torch_sim._duecredit import dcite
 from torch_sim.integrators.md import (
+    EnergyArg,
     InversePressureArg,
     InverseTimeArg,
     MDState,
@@ -409,11 +410,11 @@ def npt_langevin_anisotropic_init(
     state: SimState,
     model: ModelInterface,
     *,
-    kT: float | torch.Tensor,
-    dt: float | torch.Tensor,
-    alpha: InverseTimeArg = None,
-    cell_alpha: InverseTimeArg = None,
-    b_tau: TimeArg = None,
+    kT: EnergyArg,
+    dt: TimeArg,
+    alpha: InverseTimeArg | None = None,
+    cell_alpha: InverseTimeArg | None = None,
+    b_tau: TimeArg | None = None,
     **_kwargs: Any,
 ) -> NPTLangevinAnisotropicState:
     """Initialize NPT Langevin state with independent per-dimension cell lengths.
@@ -513,8 +514,8 @@ def npt_langevin_anisotropic_step(
     state: NPTLangevinAnisotropicState,
     model: ModelInterface,
     *,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: PressureArg,
 ) -> NPTLangevinAnisotropicState:
     r"""Perform one NPT Langevin step with independent per-dimension cell lengths.
@@ -702,8 +703,8 @@ class NPTLangevinIsotropicState(NPTState):
 
 def _compute_isotropic_cell_force(
     state: NPTLangevinIsotropicState,
-    external_pressure: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    external_pressure: PressureArg,
+    kT: EnergyArg,
 ) -> torch.Tensor:
     """Compute force on the strain coordinate ε.
 
@@ -888,11 +889,11 @@ def npt_langevin_isotropic_init(
     state: SimState,
     model: ModelInterface,
     *,
-    kT: float | torch.Tensor,
-    dt: float | torch.Tensor,
-    alpha: InverseTimeArg = None,
-    cell_alpha: InverseTimeArg = None,
-    b_tau: TimeArg = None,
+    kT: EnergyArg,
+    dt: TimeArg,
+    alpha: InverseTimeArg | None = None,
+    cell_alpha: InverseTimeArg | None = None,
+    b_tau: TimeArg | None = None,
     **_kwargs: Any,
 ) -> NPTLangevinIsotropicState:
     """Initialize an NPT Langevin state using logarithmic strain coordinate.
@@ -988,8 +989,8 @@ def npt_langevin_isotropic_step(
     state: NPTLangevinIsotropicState,
     model: ModelInterface,
     *,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: PressureArg,
 ) -> NPTLangevinIsotropicState:
     r"""Perform one NPT Langevin step using logarithmic strain coordinate.
@@ -1642,13 +1643,13 @@ def npt_nose_hoover_isotropic_init(
     state: SimState,
     model: ModelInterface,
     *,
-    kT: float | torch.Tensor,
-    dt: float | torch.Tensor,
+    kT: EnergyArg,
+    dt: TimeArg,
     chain_length: int = 3,
     chain_steps: int = 2,
     sy_steps: int = 3,
-    t_tau: TimeArg = None,
-    b_tau: TimeArg = None,
+    t_tau: TimeArg | None = None,
+    b_tau: TimeArg | None = None,
     **kwargs: Any,
 ) -> NPTNoseHooverIsotropicState:
     """Initialize the NPT Nose-Hoover state.
@@ -1812,8 +1813,8 @@ def npt_nose_hoover_isotropic_step(
     state: NPTNoseHooverIsotropicState,
     model: ModelInterface,
     *,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: PressureArg,
 ) -> NPTNoseHooverIsotropicState:
     r"""Perform a complete NPT integration step with Nose-Hoover chain thermostats.
@@ -2493,10 +2494,10 @@ def _crescale_isotropic_barostat_step(
 
 def _coerce_crescale_step_inputs(
     state: NPTCRescaleState,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: float | torch.Tensor,
-    tau: float | torch.Tensor | None,
+    tau: TimeArg | None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Normalize scalar-or-tensor C-rescale step parameters to state tensors."""
     device, dtype = state.device, state.dtype
@@ -2517,10 +2518,10 @@ def npt_crescale_triclinic_step(
     state: NPTCRescaleState,
     model: ModelInterface,
     *,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: PressureArg,
-    tau: TimeArg = None,
+    tau: TimeArg | None = None,
 ) -> NPTCRescaleState:
     r"""Perform one NPT integration step with anisotropic stochastic cell rescaling.
 
@@ -2645,10 +2646,10 @@ def npt_crescale_anisotropic_step(
     state: NPTCRescaleState,
     model: ModelInterface,
     *,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: PressureArg,
-    tau: TimeArg = None,
+    tau: TimeArg | None = None,
 ) -> NPTCRescaleState:
     """Perform one NPT integration step with cell rescaling barostat.
 
@@ -2721,10 +2722,10 @@ def npt_crescale_triclinic_average_step(
     state: NPTCRescaleState,
     model: ModelInterface,
     *,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: PressureArg,
-    tau: TimeArg = None,
+    tau: TimeArg | None = None,
 ) -> NPTCRescaleState:
     """Perform one NPT integration step with cell rescaling barostat.
 
@@ -2797,10 +2798,10 @@ def npt_crescale_isotropic_step(
     state: NPTCRescaleState,
     model: ModelInterface,
     *,
-    dt: float | torch.Tensor,
-    kT: float | torch.Tensor,
+    dt: TimeArg,
+    kT: EnergyArg,
     external_pressure: PressureArg,
-    tau: TimeArg = None,
+    tau: TimeArg | None = None,
 ) -> NPTCRescaleState:
     r"""Perform one NPT integration step with isotropic stochastic cell rescaling.
 
@@ -2904,10 +2905,10 @@ def npt_crescale_init(
     state: SimState,
     model: ModelInterface,
     *,
-    kT: float | torch.Tensor,
-    dt: float | torch.Tensor,
-    tau_p: TimeArg = None,
-    isothermal_compressibility: InversePressureArg = None,
+    kT: EnergyArg,
+    dt: TimeArg,
+    tau_p: TimeArg | None = None,
+    isothermal_compressibility: InversePressureArg | None = None,
 ) -> NPTCRescaleState:
     """Initialize the NPT cell rescaling state.
 
