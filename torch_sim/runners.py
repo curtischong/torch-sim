@@ -321,10 +321,12 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
             f"(init_func, step_func), got {type(integrator)}"
         )
 
+    # explicitly copy the kwargs since we modify the copied dict below
+    init_kwargs = {} if init_kwargs is None else init_kwargs.copy()
+
     # Like `timestep` above, unit-carrying kwargs (e.g. `tau`, `gamma`,
     # `external_pressure`) must be converted to internal units per
     # INTEGRATOR_UNIT_KWARGS
-    init_kwargs = dict(init_kwargs or {})
     channels = {"init": init_kwargs, "step": integrator_kwargs}
     for key, meta in INTEGRATOR_UNIT_KWARGS.get(integrator, {}).items():
         kwargs = channels[meta.channel]
