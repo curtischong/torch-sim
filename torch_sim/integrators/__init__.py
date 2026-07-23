@@ -74,13 +74,25 @@ Notes:
 """
 
 # ruff: noqa: F401
+import typing
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import torch_sim as ts
 
-from .md import MDState, initialize_momenta, momentum_step, position_step, velocity_verlet
+from .md import (
+    InversePressureArg,
+    InverseTimeArg,
+    MDState,
+    PressureArg,
+    TimeArg,
+    initialize_momenta,
+    momentum_step,
+    position_step,
+    velocity_verlet,
+)
 from .npt import (
     NPTLangevinAnisotropicState,
     NPTLangevinIsotropicState,
@@ -201,4 +213,53 @@ INTEGRATOR_REGISTRY: Final[
         npt_crescale_init,
         npt_crescale_triclinic_step,
     ),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class UnitKwarg:
+    """Metadata for integrator parameters carrying physical units.
+
+    ``factor`` converts the parameter to internal units (multiply by it).
+    ``channel`` is the function the parameter is used in (either ``"init"``
+    or ``"step"``).
+    """
+
+    factor: float
+    channel: Literal["init", "step"]
+
+
+_UNIT_FACTORS: Final = frozenset(
+    arg.__metadata__[0]
+    for arg in (TimeArg, InverseTimeArg, PressureArg, InversePressureArg)
+)
+
+
+def _collect_unit_kwargs(integrator: Integrator) -> dict[str, UnitKwarg]:
+    """Read the unit-annotated kwargs off an integrator's init/step signatures."""
+    init_fn, step_fn = INTEGRATOR_REGISTRY[integrator]
+    unit_kwargs: dict[str, UnitKwarg] = {}
+    for channel, fn in (("init", init_fn), ("step", step_fn)):
+        hints = typing.get_type_hints(fn, include_extras=True)
+        for name, hint in hints.items():
+            for meta in getattr(hint, "__metadata__", ()):
+                if isinstance(meta, float) and meta in _UNIT_FACTORS:
+                    if name in unit_kwargs:
+                        raise TypeError(
+                            f"{integrator}: unit kwarg {name!r} is annotated in both "
+                            f"the init and step functions, making its `integrate` "
+                            f"channel ambiguous"
+                        )
+                    unit_kwargs[name] = UnitKwarg(float(meta), channel)
+    return unit_kwargs
+
+
+#: Unit-carrying kwargs of each integrator, derived at import time from the
+#: ``TimeArg``/``InverseTimeArg``/``PressureArg``/``InversePressureArg`` annotations
+#: on the registered init/step functions. :func:`torch_sim.runners.integrate` reads
+#: this to unit-convert kwargs.
+INTEGRATOR_UNIT_KWARGS: Final[dict[Integrator, dict[str, UnitKwarg]]] = {
+    integrator: unit_kwargs
+    for integrator in Integrator
+    if (unit_kwargs := _collect_unit_kwargs(integrator))
 }

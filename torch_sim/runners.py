@@ -18,11 +18,11 @@ from tqdm import tqdm
 
 import torch_sim as ts
 from torch_sim.autobatching import BinningAutoBatcher, InFlightAutoBatcher
-from torch_sim.integrators import INTEGRATOR_REGISTRY, Integrator
+from torch_sim.integrators import INTEGRATOR_REGISTRY, INTEGRATOR_UNIT_KWARGS, Integrator
 from torch_sim.integrators.md import MDState
 from torch_sim.models.interface import ModelInterface
 from torch_sim.optimizers import OPTIM_REGISTRY, FireState, Optimizer, OptimState
-from torch_sim.state import _CANONICAL_MODEL_KEYS, SimState
+from torch_sim.state import _CANONICAL_MODEL_KEYS, SimState, detach_state_graph
 from torch_sim.trajectory import TrajectoryReporter
 from torch_sim.typing import StateLike
 from torch_sim.units import UnitSystem
@@ -249,7 +249,7 @@ def _write_initial_state(
             trajectory_reporter.report(state, 0, model=model)
 
 
-def integrate[T: SimState](  # noqa: C901
+def integrate[T: SimState](  # noqa: C901, PLR0915
     system: StateLike,
     model: ModelInterface,
     *,
@@ -287,7 +287,7 @@ def integrate[T: SimState](  # noqa: C901
             it's passed to `tqdm` as kwargs.
         init_kwargs (dict[str, Any], optional): Additional keyword arguments for
             integrator init function.
-        **integrator_kwargs: Additional keyword arguments for integrator init function
+        **integrator_kwargs: Additional keyword arguments for integrator step function
 
     Returns:
         T: Final state after integration
@@ -320,6 +320,18 @@ def integrate[T: SimState](  # noqa: C901
             f"integrator must be key from Integrator or a tuple of "
             f"(init_func, step_func), got {type(integrator)}"
         )
+
+    # explicitly copy the kwargs since we modify the copied dict below
+    init_kwargs = {} if init_kwargs is None else init_kwargs.copy()
+
+    # Like `timestep` above, unit-carrying kwargs (e.g. `tau`, `gamma`,
+    # `external_pressure`) must be converted to internal units per
+    # INTEGRATOR_UNIT_KWARGS
+    channels = {"init": init_kwargs, "step": integrator_kwargs}
+    for key, meta in INTEGRATOR_UNIT_KWARGS.get(integrator, {}).items():
+        kwargs = channels[meta.channel]
+        if kwargs.get(key) is not None:
+            kwargs[key] = kwargs[key] * meta.factor
     # batch_iterator will be a list if autobatcher is False
     batch_iterator = _configure_batches_iterator(
         initial_state, model, autobatcher=autobatcher
@@ -351,9 +363,7 @@ def integrate[T: SimState](  # noqa: C901
         batch_kT = (
             kTs[:, system_indices] if (system_indices and len(kTs.shape) == 2) else kTs
         )
-        state = init_func(
-            state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs or {}
-        )
+        state = init_func(state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs)
 
         # set up trajectory reporters
         if autobatcher and trajectory_reporter is not None and og_filenames is not None:
@@ -472,10 +482,17 @@ def _chunked_apply[T: SimState](
     """
     autobatcher = BinningAutoBatcher(model=model, **batcher_kwargs)
     autobatcher.load_states(states)
-    initialized_states = []
 
+    # Each initialized bin is accumulated and held until every bin is done, then
+    # concatenated. Models such as UMA return a graph-carrying energy, so without
+    # detaching, every accumulated state would pin its bin's full forward autograd
+    # graph - live GPU memory then grows by roughly one graph per bin until the
+    # device fills mid-pass (fatal here: BinningAutoBatcher has no OOM recovery).
+    # The initialized states are only read for their values downstream, so
+    # dropping the graph is safe. Mirrors the InFlightAutoBatcher fix.
     initialized_states = [
-        fn(model=model, state=system, **init_kwargs) for system, _indices in autobatcher
+        detach_state_graph(fn(model=model, state=system, **init_kwargs))
+        for system, _indices in autobatcher
     ]
 
     ordered_states = autobatcher.restore_original_order(initialized_states)
