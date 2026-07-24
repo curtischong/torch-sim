@@ -12,19 +12,21 @@ from torch_sim._duecredit import dcite
 from torch_sim.models.interface import ModelInterface
 from torch_sim.quantities import calc_kT
 from torch_sim.state import SimState
-from torch_sim.units import MetalUnits
+from torch_sim.units import MetalUnits, UnitAnnotation
 
 
 logger = logging.getLogger(__name__)
 
 
 # The metadata is the factor that converts the kwarg to internal units
-TemperatureArg = Annotated[float | torch.Tensor, MetalUnits.temperature]
-EnergyArg = Annotated[float | torch.Tensor, MetalUnits.energy]
-TimeArg = Annotated[float | torch.Tensor, MetalUnits.time]
-InverseTimeArg = Annotated[float | torch.Tensor, 1 / MetalUnits.time]
-PressureArg = Annotated[float | torch.Tensor, MetalUnits.pressure]
-InversePressureArg = Annotated[float | torch.Tensor, 1 / MetalUnits.pressure]
+TemperatureArg = Annotated[float | torch.Tensor, UnitAnnotation(MetalUnits.temperature)]
+EnergyArg = Annotated[float | torch.Tensor, UnitAnnotation(MetalUnits.energy)]
+TimeArg = Annotated[float | torch.Tensor, UnitAnnotation(MetalUnits.time)]
+InverseTimeArg = Annotated[float | torch.Tensor, UnitAnnotation(1 / MetalUnits.time)]
+PressureArg = Annotated[float | torch.Tensor, UnitAnnotation(MetalUnits.pressure)]
+InversePressureArg = Annotated[
+    float | torch.Tensor, UnitAnnotation(1 / MetalUnits.pressure)
+]
 
 
 @dataclass(kw_only=True)

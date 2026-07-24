@@ -132,6 +132,20 @@ def test_integrate_converts_init_kwarg(
     assert torch.allclose(final.chain.tau, torch.full_like(final.chain.tau, expected))
 
 
+def test_integrator_unit_kwargs_support_shared_init_and_step_parameters() -> None:
+    """Shared and optional unit kwargs retain their conversion metadata."""
+    dt = ts.integrators.INTEGRATOR_KWARG_UNITS[ts.Integrator.nvt_nose_hoover]["dt"]
+    tau = ts.integrators.INTEGRATOR_KWARG_UNITS[ts.Integrator.nvt_nose_hoover]["tau"]
+    gamma = ts.integrators.INTEGRATOR_KWARG_UNITS[ts.Integrator.nvt_langevin]["gamma"]
+
+    assert dict(dt.factors) == {
+        "init": ts.units.MetalUnits.time,
+        "step": ts.units.MetalUnits.time,
+    }
+    assert dict(tau.factors) == {"init": ts.units.MetalUnits.time}
+    assert dict(gamma.factors) == {"step": 1 / ts.units.MetalUnits.time}
+
+
 def test_integrate_converts_step_kwarg(
     ar_supercell_sim_state: SimState,
     lj_model: LennardJonesModel,

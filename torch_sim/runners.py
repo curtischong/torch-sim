@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 import torch_sim as ts
 from torch_sim.autobatching import BinningAutoBatcher, InFlightAutoBatcher
-from torch_sim.integrators import INTEGRATOR_REGISTRY, INTEGRATOR_UNIT_KWARGS, Integrator
+from torch_sim.integrators import INTEGRATOR_KWARG_UNITS, INTEGRATOR_REGISTRY, Integrator
 from torch_sim.integrators.md import MDState
 from torch_sim.models.interface import ModelInterface
 from torch_sim.optimizers import OPTIM_REGISTRY, FireState, Optimizer, OptimState
@@ -176,7 +176,7 @@ def _normalize_temperature_tensor(
     """Turn the temperature into a tensor of shape (n_steps,) or (n_steps, n_systems).
 
     Args:
-        temperature (float | int | list | torch.Tensor): Temperature input
+        temperature (float | list | torch.Tensor): Temperature input
         n_steps (int): Number of integration steps
         initial_state (SimState): Initial simulation state for dtype and device
     Returns:
@@ -303,8 +303,6 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
     )
     dtype, device = initial_state.dtype, initial_state.device
     kTs = _normalize_temperature_tensor(temperature, n_steps, initial_state)
-    kTs = kTs * unit_system.temperature
-    dt = torch.as_tensor(timestep * unit_system.time, dtype=dtype, device=device)
 
     # Handle both string names and direct function tuples
     if isinstance(integrator, Integrator):
@@ -321,17 +319,18 @@ def integrate[T: SimState](  # noqa: C901, PLR0915
             f"(init_func, step_func), got {type(integrator)}"
         )
 
-    # explicitly copy the kwargs since we modify the copied dict below
+    # Convert unit-carrying kwargs to internal units per INTEGRATOR_KWARG_UNIT
     init_kwargs = {} if init_kwargs is None else init_kwargs.copy()
 
-    # Like `timestep` above, unit-carrying kwargs (e.g. `tau`, `gamma`,
-    # `external_pressure`) must be converted to internal units per
-    # INTEGRATOR_UNIT_KWARGS
+    kTs = kTs * unit_system.temperature
+    dt = torch.as_tensor(timestep * unit_system.time, dtype=dtype, device=device)
     channels = {"init": init_kwargs, "step": integrator_kwargs}
-    for key, meta in INTEGRATOR_UNIT_KWARGS.get(integrator, {}).items():
-        kwargs = channels[meta.channel]
-        if kwargs.get(key) is not None:
-            kwargs[key] = kwargs[key] * meta.factor
+    for key, meta in INTEGRATOR_KWARG_UNITS.get(integrator, {}).items():
+        for channel, factor in meta.factors:
+            kwargs = channels[channel]
+            if kwargs.get(key) is not None:
+                kwargs[key] = kwargs[key] * factor
+
     # batch_iterator will be a list if autobatcher is False
     batch_iterator = _configure_batches_iterator(
         initial_state, model, autobatcher=autobatcher
