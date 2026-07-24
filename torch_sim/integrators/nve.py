@@ -49,13 +49,15 @@ def nve_init(
     """
     model_output = model(state)
 
+    kT_tensor = torch.as_tensor(kT, device=state.device, dtype=state.dtype)
+
     momenta = getattr(state, "momenta", None)
     if momenta is None:
         momenta = initialize_momenta(
             state.positions,
             state.masses,
             state.system_idx,
-            kT,
+            kT_tensor,
             state.rng,
         )
 

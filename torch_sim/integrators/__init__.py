@@ -92,7 +92,7 @@ from .md import (
     initialize_momenta,
     momentum_step,
     position_step,
-    velocity_verlet,
+    velocity_verlet_step,
 )
 from .npt import (
     NPTLangevinAnisotropicState,

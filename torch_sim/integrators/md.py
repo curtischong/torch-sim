@@ -1,7 +1,6 @@
 """Core molecular dynamics state and operations."""
 
 import logging
-import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated
@@ -115,7 +114,7 @@ def initialize_momenta(
     positions: torch.Tensor,
     masses: torch.Tensor,
     system_idx: torch.Tensor,
-    kT: EnergyArg,
+    kT: torch.Tensor,
     generator: torch.Generator | None = None,
 ) -> torch.Tensor:
     """Initialize particle momenta based on temperature.
@@ -137,7 +136,6 @@ def initialize_momenta(
     device = positions.device
     dtype = positions.dtype
 
-    kT = torch.as_tensor(kT, device=device, dtype=dtype)
     if kT.ndim > 0:
         kT = kT[system_idx]
 
@@ -245,14 +243,6 @@ def velocity_verlet_step[T: MDState](state: T, dt: TimeArg, model: ModelInterfac
     state.forces = model_output["forces"]
     state.store_model_extras(model_output)
     return momentum_step(state, dt_2)
-
-
-def velocity_verlet[T: MDState](state: T, dt: TimeArg, model: ModelInterface) -> T:
-    """Deprecated alias for velocity_verlet_step."""
-    msg = "velocity_verlet is deprecated. Use velocity_verlet_step instead."
-    warnings.warn(msg, DeprecationWarning, stacklevel=2)
-    logger.warning(msg)
-    return velocity_verlet_step(state=state, dt=dt, model=model)
 
 
 @dataclass
