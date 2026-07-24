@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 import torch_sim as ts
 from torch_sim.autobatching import BinningAutoBatcher, InFlightAutoBatcher
-from torch_sim.integrators import INTEGRATOR_REGISTRY, Integrator
+from torch_sim.integrators import INTEGRATOR_KWARG_UNITS, INTEGRATOR_REGISTRY, Integrator
 from torch_sim.integrators.md import MDState
 from torch_sim.models.interface import ModelInterface
 from torch_sim.optimizers import OPTIM_REGISTRY, FireState, Optimizer, OptimState
@@ -176,7 +176,7 @@ def _normalize_temperature_tensor(
     """Turn the temperature into a tensor of shape (n_steps,) or (n_steps, n_systems).
 
     Args:
-        temperature (float | int | list | torch.Tensor): Temperature input
+        temperature (float | list | torch.Tensor): Temperature input
         n_steps (int): Number of integration steps
         initial_state (SimState): Initial simulation state for dtype and device
     Returns:
@@ -249,7 +249,7 @@ def _write_initial_state(
             trajectory_reporter.report(state, 0, model=model)
 
 
-def integrate[T: SimState](  # noqa: C901
+def integrate[T: SimState](  # noqa: C901, PLR0915
     system: StateLike,
     model: ModelInterface,
     *,
@@ -287,7 +287,7 @@ def integrate[T: SimState](  # noqa: C901
             it's passed to `tqdm` as kwargs.
         init_kwargs (dict[str, Any], optional): Additional keyword arguments for
             integrator init function.
-        **integrator_kwargs: Additional keyword arguments for integrator init function
+        **integrator_kwargs: Additional keyword arguments for integrator step function
 
     Returns:
         T: Final state after integration
@@ -303,8 +303,6 @@ def integrate[T: SimState](  # noqa: C901
     )
     dtype, device = initial_state.dtype, initial_state.device
     kTs = _normalize_temperature_tensor(temperature, n_steps, initial_state)
-    kTs = kTs * unit_system.temperature
-    dt = torch.as_tensor(timestep * unit_system.time, dtype=dtype, device=device)
 
     # Handle both string names and direct function tuples
     if isinstance(integrator, Integrator):
@@ -320,6 +318,19 @@ def integrate[T: SimState](  # noqa: C901
             f"integrator must be key from Integrator or a tuple of "
             f"(init_func, step_func), got {type(integrator)}"
         )
+
+    # Convert unit-carrying kwargs to internal units per INTEGRATOR_KWARG_UNIT
+    init_kwargs = {} if init_kwargs is None else init_kwargs.copy()
+
+    kTs = kTs * unit_system.temperature
+    dt = torch.as_tensor(timestep * unit_system.time, dtype=dtype, device=device)
+    channels = {"init": init_kwargs, "step": integrator_kwargs}
+    for key, meta in INTEGRATOR_KWARG_UNITS.get(integrator, {}).items():
+        for channel, factor in meta.factors:
+            kwargs = channels[channel]
+            if kwargs.get(key) is not None:
+                kwargs[key] = kwargs[key] * factor
+
     # batch_iterator will be a list if autobatcher is False
     batch_iterator = _configure_batches_iterator(
         initial_state, model, autobatcher=autobatcher
@@ -351,9 +362,7 @@ def integrate[T: SimState](  # noqa: C901
         batch_kT = (
             kTs[:, system_indices] if (system_indices and len(kTs.shape) == 2) else kTs
         )
-        state = init_func(
-            state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs or {}
-        )
+        state = init_func(state=state, model=model, kT=batch_kT[0], dt=dt, **init_kwargs)
 
         # set up trajectory reporters
         if autobatcher and trajectory_reporter is not None and og_filenames is not None:
