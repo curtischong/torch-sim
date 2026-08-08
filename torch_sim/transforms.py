@@ -13,129 +13,6 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.types import _dtype
 
 
-_MAX_REDUCTION_ITERATIONS = 100_000
-
-
-def _gauss_reduce(
-    basis: torch.Tensor, hu: torch.Tensor, hv: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return integer coefficients for a Gauss-reduced two-dimensional basis."""
-    visited: set[tuple[int, ...]] = set()
-    u = hu.to(dtype=basis.dtype) @ basis
-    v = hv.to(dtype=basis.dtype) @ basis
-
-    for _ in range(_MAX_REDUCTION_ITERATIONS):
-        x = torch.round(torch.dot(u, v) / torch.dot(u, u)).to(dtype=hu.dtype)
-        hu, hv = hv - x * hu, hu
-        u = hu.to(dtype=basis.dtype) @ basis
-        v = hv.to(dtype=basis.dtype) @ basis
-
-        if torch.dot(u, u) >= torch.dot(v, v):
-            return hv, hu
-
-        site = tuple((torch.stack((hu, hv))).reshape(-1).tolist())
-        if site in visited:
-            return hv, hu
-        visited.add(site)
-
-    raise RuntimeError(
-        f"Gaussian basis not found after {_MAX_REDUCTION_ITERATIONS} iterations"
-    )
-
-
-def _closest_vector_2d(
-    target: torch.Tensor, u: torch.Tensor, v: torch.Tensor
-) -> torch.Tensor:
-    """Find integer coefficients of the closest vector in a reduced 2D lattice."""
-    values = torch.tensor([-1, 0, 1], dtype=torch.int64, device=target.device)
-    coefficients = torch.cartesian_prod(values, values)
-    vectors = coefficients.to(dtype=target.dtype) @ torch.stack((u, v))
-    indices = torch.argsort(torch.linalg.vector_norm(vectors, dim=1), stable=True)[:7]
-    relevant_vectors = vectors[indices]
-    relevant_coefficients = coefficients[indices]
-
-    translated = target
-    total_coefficients = torch.zeros(2, dtype=torch.int64, device=target.device)
-    previous_distance: torch.Tensor | None = None
-
-    for _ in range(_MAX_REDUCTION_ITERATIONS):
-        distances = torch.linalg.vector_norm(relevant_vectors + translated, dim=1)
-        index = int(torch.argmin(distances))
-        distance = distances[index]
-        if index == 0 or (
-            previous_distance is not None and distance >= previous_distance
-        ):
-            return total_coefficients
-
-        previous_distance = distance
-        vector = relevant_vectors[index]
-        multiplier = torch.round(
-            -torch.dot(translated, vector) / torch.dot(vector, vector)
-        ).to(dtype=torch.int64)
-        total_coefficients += multiplier * relevant_coefficients[index]
-        translated = target + total_coefficients[0] * u + total_coefficients[1] * v
-
-    raise RuntimeError(
-        f"Closest vector not found after {_MAX_REDUCTION_ITERATIONS} iterations"
-    )
-
-
-def _minkowski_reduce(cell: torch.Tensor, pbc: torch.Tensor) -> torch.Tensor:
-    """Minkowski-reduce the periodic lattice vectors of a column-vector cell."""
-    dimension = int(pbc.sum())
-    if dimension <= 1:
-        return cell
-
-    # Reduction selects a discrete integer basis. Make that selection using detached
-    # values, then apply it to the original cell so gradients still flow through it.
-    basis = cell.mT.detach()
-    operation = torch.eye(3, dtype=torch.int64, device=cell.device)
-
-    if dimension == 2:
-        periodic = torch.nonzero(pbc, as_tuple=False).flatten()
-        first, second = int(periodic[0]), int(periodic[1])
-        hu, hv = _gauss_reduce(basis, operation[first], operation[second])
-        operation[first] = hu
-        operation[second] = hv
-    else:
-        norms = torch.linalg.vector_norm(basis, dim=1)
-        visited: set[tuple[int, ...]] = set()
-
-        for _ in range(_MAX_REDUCTION_ITERATIONS):
-            operation = operation[torch.argsort(norms, stable=True)]
-            last = operation[2].clone()
-            hu, hv = _gauss_reduce(basis, operation[0], operation[1])
-            operation = torch.stack((hu, hv, last))
-            reduced_basis = operation.to(dtype=cell.dtype) @ basis
-
-            u, v = reduced_basis[:2]
-            x_axis = u / torch.linalg.vector_norm(u)
-            y_axis = v - x_axis * torch.dot(v, x_axis)
-            y_axis /= torch.linalg.vector_norm(y_axis)
-
-            projected = reduced_basis @ torch.stack((x_axis, y_axis)).mT
-            coefficients = _closest_vector_2d(projected[2], projected[0], projected[1])
-            last_coefficients = torch.cat((coefficients, coefficients.new_ones(1)))
-            operation[2] = last_coefficients @ operation
-
-            reduced_basis = operation.to(dtype=cell.dtype) @ basis
-            norms = torch.linalg.vector_norm(reduced_basis, dim=1)
-            if norms[2] >= norms[1]:
-                break
-
-            site = tuple(operation.reshape(-1).tolist())
-            if site in visited:
-                break
-            visited.add(site)
-        else:
-            raise RuntimeError(
-                "Minkowski-reduced basis not found after "
-                f"{_MAX_REDUCTION_ITERATIONS} iterations"
-            )
-
-    return (operation.to(dtype=cell.dtype) @ cell.mT).mT
-
-
 def get_fractional_coordinates(
     positions: torch.Tensor, cell: torch.Tensor
 ) -> torch.Tensor:
@@ -333,6 +210,134 @@ def pbc_wrap_batched_and_get_lattice_shifts(
     return out, shifts
 
 
+_MAX_REDUCTION_ITERATIONS = 100_000
+
+
+def _gauss_reduce(
+    basis: torch.Tensor, hu: torch.Tensor, hv: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Gauss-reduce two lattice vectors given as integer coefficient rows of ``basis``.
+
+    Port of ``ase.geometry.minkowski_reduction.reduction_gauss``: alternately swap the
+    vectors and subtract the rounded projection of one onto the other until the first
+    is no shorter than the second. The visited set breaks floating-point cycles
+    between equivalent bases.
+    """
+    visited: set[tuple[int, ...]] = set()
+    u = hu.to(basis.dtype) @ basis
+    v = hv.to(basis.dtype) @ basis
+
+    for _ in range(_MAX_REDUCTION_ITERATIONS):
+        x = torch.round(torch.dot(u, v) / torch.dot(u, u)).to(hu.dtype)
+        hu, hv = hv - x * hu, hu
+        u = hu.to(basis.dtype) @ basis
+        v = hv.to(basis.dtype) @ basis
+
+        site = tuple(torch.cat((hu, hv)).tolist())
+        if torch.dot(u, u) >= torch.dot(v, v) or site in visited:
+            return hv, hu
+        visited.add(site)
+
+    raise RuntimeError(
+        f"Gauss-reduced basis not found after {_MAX_REDUCTION_ITERATIONS} iterations"
+    )
+
+
+def _closest_vector_2d(
+    target: torch.Tensor, u: torch.Tensor, v: torch.Tensor
+) -> torch.Tensor:
+    """Find integer coefficients ``(a, b)`` minimizing ``|target + a * u + b * v|``.
+
+    Port of ``ase.geometry.minkowski_reduction.closest_vector`` for a Gauss-reduced
+    basis: greedily step along short lattice vectors until the distance to the origin
+    stops decreasing.
+    """
+    values = torch.tensor([-1, 0, 1], dtype=torch.int64, device=target.device)
+    steps = torch.cartesian_prod(values, values)
+    step_vectors = steps.to(target.dtype) @ torch.stack((u, v))
+    # Sorting by length puts the zero vector first, followed by the (at most six)
+    # Voronoi-relevant vectors of the reduced 2D lattice.
+    order = torch.argsort(torch.linalg.vector_norm(step_vectors, dim=1), stable=True)[:7]
+    step_vectors = step_vectors[order]
+    steps = steps[order]
+
+    coefficients = torch.zeros(2, dtype=torch.int64, device=target.device)
+    shifted = target
+    previous_distance: torch.Tensor | None = None
+
+    for _ in range(_MAX_REDUCTION_ITERATIONS):
+        distances = torch.linalg.vector_norm(step_vectors + shifted, dim=1)
+        index = int(distances.argmin())
+        # Index 0 is the zero step: no lattice vector brings the target any closer.
+        if index == 0 or (
+            previous_distance is not None and distances[index] >= previous_distance
+        ):
+            return coefficients
+
+        previous_distance = distances[index]
+        step = step_vectors[index]
+        multiplier = torch.round(-torch.dot(shifted, step) / torch.dot(step, step))
+        coefficients += multiplier.to(torch.int64) * steps[index]
+        shifted = target + coefficients[0] * u + coefficients[1] * v
+
+    raise RuntimeError(
+        f"Closest vector not found after {_MAX_REDUCTION_ITERATIONS} iterations"
+    )
+
+
+def _minkowski_reduce(cell: torch.Tensor, pbc: torch.Tensor) -> torch.Tensor:
+    """Minkowski-reduce the periodic lattice vectors of a column-vector cell.
+
+    Port of ``ase.geometry.minkowski_reduce``. The reduction only selects an integer
+    change of basis, so it is computed from detached values and then applied to the
+    original cell, keeping gradients intact.
+    """
+    n_periodic = int(pbc.sum())
+    if n_periodic <= 1:
+        return cell
+
+    basis = cell.mT.detach()  # lattice vectors as rows
+    op = torch.eye(3, dtype=torch.int64, device=cell.device)
+
+    if n_periodic == 2:
+        first, second = torch.nonzero(pbc).flatten().tolist()
+        hu, hv = _gauss_reduce(basis, op[first], op[second])
+        op[[first, second]] = torch.stack((hu, hv))
+    else:
+        norms = torch.linalg.vector_norm(basis, dim=1)
+        visited: set[tuple[int, ...]] = set()
+
+        for _ in range(_MAX_REDUCTION_ITERATIONS):
+            # Sort the basis by length and Gauss-reduce the two shortest vectors.
+            op = op[torch.argsort(norms, stable=True)]
+            hu, hv = _gauss_reduce(basis, op[0], op[1])
+            op = torch.stack((hu, hv, op[2]))
+            reduced = op.to(cell.dtype) @ basis
+
+            # Shorten the third vector by the lattice vector closest to its
+            # projection onto the plane spanned by the first two.
+            u, v = reduced[:2]
+            x_axis = u / torch.linalg.vector_norm(u)
+            y_axis = v - x_axis * torch.dot(v, x_axis)
+            y_axis /= torch.linalg.vector_norm(y_axis)
+            projected = reduced @ torch.stack((x_axis, y_axis)).mT
+            ab = _closest_vector_2d(projected[2], projected[0], projected[1])
+            op[2] = torch.cat((ab, ab.new_ones(1))) @ op
+
+            norms = torch.linalg.vector_norm(op.to(cell.dtype) @ basis, dim=1)
+            site = tuple(op.reshape(-1).tolist())
+            if norms[2] >= norms[1] or site in visited:
+                break
+            visited.add(site)
+        else:
+            raise RuntimeError(
+                "Minkowski-reduced basis not found after "
+                f"{_MAX_REDUCTION_ITERATIONS} iterations"
+            )
+
+    return (op.to(cell.dtype) @ cell.mT).mT
+
+
 def minimum_image_displacement(
     *,
     dr: torch.Tensor,
@@ -340,6 +345,11 @@ def minimum_image_displacement(
     pbc: torch.Tensor | bool = True,
 ) -> torch.Tensor:
     """Apply minimum image convention to displacement vectors.
+
+    Component-wise rounding of fractional coordinates only finds the minimum image in
+    orthogonal cells. Following ASE's ``general_find_mic``, the periodic basis is
+    Minkowski-reduced first; the minimum image is then guaranteed to be among the
+    nearest images of the wrapped displacement.
 
     Args:
         dr (torch.Tensor): Displacement vectors [N, 3] or [N, N, 3].
@@ -357,44 +367,31 @@ def minimum_image_displacement(
     if cell is None or not pbc.any():
         return dr
 
-    # Component-wise fractional rounding is only valid for orthogonal cells. Following
-    # ASE, first reduce the periodic lattice basis, then search its adjacent images.
     reduced_cell = _minkowski_reduce(cell, pbc)
-    flat_displacements = dr.reshape(-1, 3)
-    if pbc.all():
-        fractional = flat_displacements @ torch.linalg.inv(reduced_cell).mT
-    else:
-        periodic = torch.nonzero(pbc, as_tuple=False).flatten()
-        periodic_basis = reduced_cell[:, periodic]
-        gram = periodic_basis.mT @ periodic_basis
-        periodic_fractional = torch.linalg.solve(
-            gram, (flat_displacements @ periodic_basis).mT
-        ).mT
-        fractional = torch.zeros_like(flat_displacements)
-        fractional[:, periodic] = periodic_fractional
-    lattice_shifts = torch.where(
-        pbc, torch.floor(fractional), torch.zeros_like(fractional)
-    )
-    wrapped = flat_displacements - lattice_shifts @ reduced_cell.mT
+    periodic_basis = reduced_cell[:, torch.nonzero(pbc).flatten()]  # [3, n_periodic]
 
-    values = torch.tensor([-1, 0, 1], dtype=torch.int64, device=dr.device)
-    image_shifts = torch.cartesian_prod(values, values, values)
-    image_shifts = image_shifts[(image_shifts[:, ~pbc] == 0).all(dim=1)]
-    # Like ASE, check the wrapped displacement first when adjacent images tie.
-    image_shifts = torch.cat((image_shifts.new_zeros((1, 3)), image_shifts))
-    translations = image_shifts.to(dtype=cell.dtype) @ reduced_cell.mT
+    # Lattice translations only move the projection of a displacement onto the span
+    # of the periodic vectors, so solve for fractional coordinates of that projection
+    # (a least-squares solve when some axes are non-periodic) and wrap it.
+    flat_dr = dr.reshape(-1, 3)
+    fractional = torch.linalg.lstsq(periodic_basis, flat_dr.mT).solution.mT
+    wrapped = flat_dr - fractional.floor() @ periodic_basis.mT
 
-    # The wrapped norm is common to all candidates, so it can be omitted when finding
-    # the closest translation. This avoids materializing [..., 27, 3] candidates.
-    scores = 2 * wrapped @ translations.mT + translations.square().sum(dim=1).unsqueeze(0)
-    closest = translations[torch.argmin(scores, dim=1)]
-    minimum_image = wrapped + closest
+    # For a Minkowski-reduced basis the minimum image is among the nearest images.
+    n_periodic = periodic_basis.shape[-1]
+    values = torch.tensor([-1.0, 0.0, 1.0], dtype=cell.dtype, device=dr.device)
+    shifts = torch.cartesian_prod(*[values] * n_periodic).reshape(-1, n_periodic)
+    translations = shifts @ periodic_basis.mT
 
-    # Preserve component-rounding's established orientation at exact half-cell ties.
-    centered_shifts = torch.where(
-        pbc, torch.round(fractional), torch.zeros_like(fractional)
-    )
-    centered = flat_displacements - centered_shifts @ reduced_cell.mT
+    # |wrapped + t|^2 differs from this score by |wrapped|^2, which is constant per
+    # displacement, so the argmin is unchanged. Scoring the translations directly
+    # avoids materializing all [n_displacements, 27, 3] candidate vectors.
+    scores = 2 * wrapped @ translations.mT + translations.square().sum(dim=1)
+    minimum_image = wrapped + translations[scores.argmin(dim=1)]
+
+    # At exact ties (e.g. half-cell displacements) keep the image that component-wise
+    # rounding picks, so orthogonal cells behave exactly as before.
+    centered = flat_dr - fractional.round() @ periodic_basis.mT
     use_centered = centered.square().sum(dim=1) <= minimum_image.square().sum(dim=1)
     minimum_image = torch.where(use_centered.unsqueeze(1), centered, minimum_image)
     return minimum_image.reshape_as(dr)
