@@ -10,7 +10,7 @@ import torch
 import torch_sim as ts
 from torch_sim.models.interface import ModelInterface
 from torch_sim.optimizers import BFGSState, FireFlavor, FireState, LBFGSState, OptimState
-from torch_sim.optimizers.cell_filters import CellLBFGSState, deform_grad
+from torch_sim.optimizers.cell_filters import CellLBFGSState, CellOptimState, deform_grad
 from torch_sim.state import SimState
 
 
@@ -1086,6 +1086,33 @@ def test_frechet_cell_fire_optimization(
     assert not torch.allclose(state.cell, initial_state_cell, atol=1e-5), (
         f"{fire_flavor=} cell should have changed after Frechet optimization."
     )
+
+
+@pytest.mark.parametrize("cell_filter", [ts.CellFilter.unit, ts.CellFilter.frechet])
+def test_cell_optim_state_filter_forces(
+    ar_supercell_sim_state: SimState,
+    lj_model: ModelInterface,
+    cell_filter: ts.CellFilter,
+) -> None:
+    """Cell optim states must carry a reference cell so the ASE FIRE force
+    transform and the fmax criterion are not silently the identity."""
+    state = ts.fire_init(
+        state=ar_supercell_sim_state, model=lj_model, cell_filter=cell_filter
+    )
+    assert isinstance(state, CellOptimState)
+
+    # shrink the reference cell so the deformation gradient is (1 / 0.95) * I
+    scale = 0.95
+    state.reference_cell = state.cell.clone() * scale
+    eye = torch.eye(3, device=state.device, dtype=state.dtype)
+    assert not torch.allclose(state.deform_grad(), eye)
+    torch.testing.assert_close(state.filter_forces(), state.forces / scale)
+
+    # the fmax criterion must reduce over the transformed forces, matching ASE
+    raw_max = ts.system_wise_max_force(state).item()
+    # a tolerance just above the raw max: converged on raw forces, not on filtered
+    convergence_fn = ts.generate_force_convergence_fn(force_tol=raw_max * 1.02)
+    assert not convergence_fn(state).any()
 
 
 def test_frechet_lbfgs_clamps_extreme_deformation(

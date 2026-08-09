@@ -324,11 +324,15 @@ def calc_heat_flux(
     return conv_sum + virial_sum
 
 
-def system_wise_max_force[T: MDState | OptimState](state: T) -> torch.Tensor:
+def system_wise_max_force[T: MDState | OptimState](
+    state: T, forces: torch.Tensor | None = None
+) -> torch.Tensor:
     """Compute the maximum force per system.
 
     Args:
         state (SimState): State to compute the maximum force per system for.
+        forces (torch.Tensor | None): Per-atom forces to reduce, shape (n_atoms, 3).
+            Defaults to ``state.forces``.
 
     Returns:
         torch.Tensor: Maximum forces per system
@@ -336,7 +340,7 @@ def system_wise_max_force[T: MDState | OptimState](state: T) -> torch.Tensor:
     system_wise_max_force = torch.zeros(
         state.n_systems, device=state.device, dtype=state.dtype
     )
-    max_forces = state.forces.norm(dim=1)
+    max_forces = (state.forces if forces is None else forces).norm(dim=1)
     return system_wise_max_force.scatter_reduce(
         dim=0, index=state.system_idx, src=max_forces, reduce="amax"
     )

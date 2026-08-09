@@ -319,16 +319,9 @@ def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
         )
 
         # Transform forces for cell optimization
-        if isinstance(state, CellFireState):
-            cur_deform_grad = cell_filters.deform_grad(
-                state.row_vector_cell,
-                getattr(state, "reference_row_vector_cell", state.row_vector_cell),
-            )
-            forces = torch.bmm(
-                state.forces.unsqueeze(1), cur_deform_grad[state.system_idx]
-            ).squeeze(1)
-        else:
-            forces = state.forces
+        forces = (
+            state.filter_forces() if isinstance(state, CellFireState) else state.forces
+        )
 
         # Calculate power (newly zeroed systems will have power=0 → neg_mask)
         system_power = tsm.batched_vdot(forces, state.velocities, state.system_idx)

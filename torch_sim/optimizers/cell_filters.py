@@ -17,7 +17,7 @@ import torch
 import torch_sim.math as tsm
 from torch_sim.models.interface import ModelInterface
 from torch_sim.optimizers.state import BFGSState, FireState, LBFGSState, OptimState
-from torch_sim.state import SimState
+from torch_sim.state import DeformGradMixin, SimState
 
 
 MAX_LOG_DEFORM = 2.0
@@ -424,10 +424,9 @@ def get_cell_filter(cell_filter: "CellFilter | tuple") -> CellFilterFuncs:
 
 
 @dataclass(kw_only=True)
-class CellOptimState(OptimState):
+class CellOptimState(OptimState, DeformGradMixin):
     """State class for cell optimization."""
 
-    reference_cell: torch.Tensor
     cell_filter: CellFilterFuncs
     cell_factor: torch.Tensor = field(default_factory=lambda: None)
     pressure: torch.Tensor = field(default_factory=lambda: None)
@@ -452,6 +451,20 @@ class CellOptimState(OptimState):
         "constant_volume",
         "frechet_method",
     }
+
+    def filter_forces(self) -> torch.Tensor:
+        """Atomic forces mapped into deformation gradient (cell filter) space.
+
+        Mirrors the ``forces @ deform_grad`` transform that ASE's cell filters
+        apply to the atomic rows of ``get_forces()``. Equals ``forces`` when the
+        cell is undeformed relative to the reference cell.
+
+        Returns:
+            The transformed atomic forces, shape (n_atoms, 3)
+        """
+        return torch.bmm(
+            self.forces.unsqueeze(1), self.deform_grad()[self.system_idx]
+        ).squeeze(1)
 
 
 @dataclass(kw_only=True)
