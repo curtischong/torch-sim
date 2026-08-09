@@ -7,11 +7,12 @@ converting between different atomistic representations and handling simulation s
 
 import copy
 import logging
+import threading
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import chain
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from tqdm import tqdm
@@ -33,6 +34,9 @@ from torch_sim.trajectory import TrajectoryReporter
 from torch_sim.typing import StateLike
 from torch_sim.units import UnitSystem
 
+
+if TYPE_CHECKING:
+    from ase import Atoms
 
 logger = logging.getLogger(__name__)
 
@@ -764,6 +768,214 @@ def optimize[T: OptimState](  # noqa: C901, PLR0915
     raise RuntimeError(
         "autobatcher is always truthy after _configure_in_flight_autobatcher"
     )
+
+
+class _AseBatchCoordinator:
+    """Batch calculator calls from concurrent ASE relaxations into one model call.
+
+    Each concurrent relaxation registers as a worker. A worker's calculator call
+    blocks until every unfinished worker has submitted its current configuration,
+    then a single batched model forward runs and results are scattered back. Workers
+    thus advance in lockstep, one model call per optimization round.
+    """
+
+    def __init__(self, model: ModelInterface) -> None:
+        self.model = model
+        self._cond = threading.Condition()
+        self._n_workers = 0
+        self._pending: dict[int, Atoms] = {}
+        self._results: dict[int, dict[str, Any] | Exception] = {}
+
+    def add_worker(self) -> None:
+        with self._cond:
+            self._n_workers += 1
+
+    def remove_worker(self) -> None:
+        with self._cond:
+            self._n_workers -= 1
+            self._flush_if_ready()
+
+    def evaluate(self, worker_id: int, atoms: "Atoms") -> dict[str, Any]:
+        """Submit a configuration and block until its batched results arrive."""
+        with self._cond:
+            self._pending[worker_id] = atoms
+            self._flush_if_ready()
+            while worker_id not in self._results:
+                self._cond.wait()
+            result = self._results.pop(worker_id)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    def _flush_if_ready(self) -> None:
+        """Run the batched model call once all unfinished workers have submitted.
+
+        Must be called with the condition lock held.
+        """
+        if not self._pending or len(self._pending) < self._n_workers:
+            return
+        from ase.stress import full_3x3_to_voigt_6_stress
+
+        worker_ids = list(self._pending)
+        atoms_batch = [self._pending.pop(idx) for idx in worker_ids]
+        try:
+            state = ts.io.atoms_to_state(
+                atoms_batch, device=self.model.device, dtype=self.model.dtype
+            )
+            output = self.model(state)
+        except Exception as exc:  # noqa: BLE001
+            # Fan the failure out to every waiting worker to avoid deadlock
+            for worker_id in worker_ids:
+                self._results[worker_id] = exc
+            self._cond.notify_all()
+            return
+        energies = output["energy"].detach().cpu().numpy()
+        forces = output["forces"].detach().cpu().numpy()
+        stresses = output["stress"].detach().cpu().numpy() if "stress" in output else None
+        offset = 0
+        for sys_idx, worker_id in enumerate(worker_ids):
+            n_atoms = len(atoms_batch[sys_idx])
+            results = {
+                "energy": float(energies[sys_idx]),
+                "free_energy": float(energies[sys_idx]),
+                "forces": forces[offset : offset + n_atoms].copy(),
+            }
+            if stresses is not None:
+                results["stress"] = full_3x3_to_voigt_6_stress(stresses[sys_idx])
+            self._results[worker_id] = results
+            offset += n_atoms
+        self._cond.notify_all()
+
+
+def optimize_ase(  # noqa: C901, PLR0915
+    atoms_list: "list[Atoms]",
+    model: ModelInterface,
+    *,
+    optimizer_cls: type | None = None,
+    cell_filter_cls: type | None = None,
+    relax_cell: bool = True,
+    fmax: float = 0.05,
+    max_steps: int = 500,
+    max_atoms: int | None = None,
+    optimizer_kwargs: dict[str, Any] | None = None,
+    filter_kwargs: dict[str, Any] | None = None,
+) -> "list[Atoms]":
+    """Relax structures with genuine ASE optimizers, batching model calls.
+
+    Each structure is relaxed by an unmodified ASE optimizer (default
+    ``ase.optimize.FIRE`` wrapped in ``ase.filters.FrechetCellFilter``, the
+    Matbench Discovery protocol), so the trajectory logic is exactly ASE's.
+    Force/stress evaluations from all in-flight relaxations are gathered into a
+    single batched model forward per optimization round, recovering most of the
+    throughput of torch-sim's native batched optimizers. As structures converge
+    they are swapped out for pending ones, keeping the batch full up to the
+    ``max_atoms`` budget.
+
+    Args:
+        atoms_list: Structures to relax. All must share the same periodic
+            boundary conditions. Input objects are not mutated.
+        model: Batched torch-sim model used for energies, forces, and stresses.
+            Must have ``compute_stress=True`` when relaxing the cell.
+        optimizer_cls: ASE optimizer class. Defaults to ``ase.optimize.FIRE``.
+        cell_filter_cls: ASE filter class wrapping each Atoms for variable-cell
+            relaxation. Defaults to ``ase.filters.FrechetCellFilter``.
+        relax_cell: Whether to relax the cell. If False, no filter is applied
+            and positions-only relaxation is run.
+        fmax: Force convergence threshold in eV/Å, applied by the ASE optimizer
+            (on the filtered forces when a cell filter is used).
+        max_steps: Maximum optimizer steps per structure.
+        max_atoms: Maximum total atoms relaxed concurrently. None relaxes all
+            structures in a single batch.
+        optimizer_kwargs: Extra keyword arguments for the optimizer constructor.
+        filter_kwargs: Extra keyword arguments for the cell filter constructor.
+
+    Returns:
+        Relaxed copies of the input structures, in input order, each with
+        ``info["converged"]`` and ``info["opt_steps"]`` set and final results
+        cached on the attached calculator.
+    """
+    from ase.calculators.calculator import Calculator, all_changes
+    from ase.filters import FrechetCellFilter
+    from ase.optimize import FIRE
+
+    optimizer_cls = optimizer_cls or FIRE
+    if relax_cell:
+        cell_filter_cls = cell_filter_cls or FrechetCellFilter
+        if not model.compute_stress:
+            raise ValueError("Cell relaxation requires a model with compute_stress=True")
+    else:
+        cell_filter_cls = None
+
+    coordinator = _AseBatchCoordinator(model)
+
+    class BatchedCalculator(Calculator):
+        """Proxy calculator that routes evaluations through the coordinator."""
+
+        implemented_properties = ("energy", "free_energy", "forces", "stress")
+
+        def __init__(self, worker_id: int) -> None:
+            super().__init__()
+            self.worker_id = worker_id
+
+        def calculate(
+            self,
+            atoms: "Atoms | None" = None,
+            properties: list[str] | None = None,
+            system_changes: list[str] = all_changes,
+        ) -> None:
+            super().calculate(atoms, properties or ["energy"], system_changes)
+            self.results = coordinator.evaluate(self.worker_id, self.atoms)
+
+    relaxed = [atoms.copy() for atoms in atoms_list]
+    converged: list[bool] = [False] * len(relaxed)
+    opt_steps: list[int] = [0] * len(relaxed)
+    errors: list[Exception | None] = [None] * len(relaxed)
+    atom_budget = max_atoms or sum(len(atoms) for atoms in relaxed)
+    in_flight_atoms = 0
+    budget_cond = threading.Condition()
+
+    def relax_one(worker_id: int, atoms: "Atoms") -> None:
+        nonlocal in_flight_atoms
+        try:
+            atoms.calc = BatchedCalculator(worker_id)
+            optimizable = (
+                cell_filter_cls(atoms, **(filter_kwargs or {}))
+                if cell_filter_cls
+                else atoms
+            )
+            opt_kwargs = {"logfile": None, **(optimizer_kwargs or {})}
+            opt = optimizer_cls(optimizable, **opt_kwargs)
+            converged[worker_id] = opt.run(fmax=fmax, steps=max_steps)
+            opt_steps[worker_id] = opt.get_number_of_steps()
+        except Exception as exc:  # noqa: BLE001
+            errors[worker_id] = exc
+        finally:
+            coordinator.remove_worker()
+            with budget_cond:
+                in_flight_atoms -= len(atoms)
+                budget_cond.notify_all()
+
+    threads: list[threading.Thread] = []
+    for worker_id, atoms in enumerate(relaxed):
+        with budget_cond:
+            while in_flight_atoms > 0 and in_flight_atoms + len(atoms) > atom_budget:
+                budget_cond.wait()
+            in_flight_atoms += len(atoms)
+        coordinator.add_worker()
+        thread = threading.Thread(target=relax_one, args=(worker_id, atoms), daemon=True)
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+
+    first_error = next((err for err in errors if err is not None), None)
+    if first_error is not None:
+        raise first_error
+    for worker_id, atoms in enumerate(relaxed):
+        atoms.info["converged"] = converged[worker_id]
+        atoms.info["opt_steps"] = opt_steps[worker_id]
+    return relaxed
 
 
 def static(  # noqa: C901

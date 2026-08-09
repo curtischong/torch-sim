@@ -1195,3 +1195,65 @@ def test_generate_force_convergence_fn_default_behavior(
 
     assert torch.equal(result_default, result_explicit)
     assert result_default.all()  # Should converge with low forces
+
+
+def _rattled_ar_atoms() -> list:
+    """Create Ar supercells of varying size with rattled positions and cells."""
+    rng = np.random.default_rng(seed=42)
+    atoms_list = []
+    for repeat in [(1, 1, 1), (2, 1, 1), (1, 2, 1), (2, 2, 1)]:
+        atoms = bulk("Ar", "fcc", a=5.26, cubic=True).repeat(repeat)
+        atoms.positions += rng.normal(scale=0.1, size=atoms.positions.shape)
+        strain = np.eye(3) + rng.normal(scale=0.02, size=(3, 3))
+        atoms.set_cell(atoms.cell.array @ strain, scale_atoms=True)
+        atoms_list.append(atoms)
+    return atoms_list
+
+
+def test_optimize_ase_matches_serial(lj_model: LennardJonesModel) -> None:
+    """Batched ASE relaxation must be identical to one-structure-at-a-time ASE."""
+    atoms_list = _rattled_ar_atoms()
+
+    batched = ts.optimize_ase(atoms_list, lj_model, fmax=0.02, max_steps=200)
+    serial = [
+        ts.optimize_ase([atoms], lj_model, fmax=0.02, max_steps=200)[0]
+        for atoms in atoms_list
+    ]
+
+    for batched_atoms, serial_atoms in zip(batched, serial, strict=True):
+        assert batched_atoms.info["converged"]
+        assert batched_atoms.info["opt_steps"] == serial_atoms.info["opt_steps"]
+        assert np.allclose(batched_atoms.positions, serial_atoms.positions, atol=1e-8)
+        assert np.allclose(batched_atoms.cell.array, serial_atoms.cell.array, atol=1e-8)
+        assert np.isclose(
+            batched_atoms.get_potential_energy(), serial_atoms.get_potential_energy()
+        )
+
+
+def test_optimize_ase_max_atoms_budget(lj_model: LennardJonesModel) -> None:
+    """A tight max_atoms budget (in-flight refill) must not change results."""
+    atoms_list = _rattled_ar_atoms()
+    smallest = min(len(atoms) for atoms in atoms_list)
+
+    full = ts.optimize_ase(atoms_list, lj_model, fmax=0.02, max_steps=200)
+    budgeted = ts.optimize_ase(
+        atoms_list, lj_model, fmax=0.02, max_steps=200, max_atoms=2 * smallest
+    )
+
+    for full_atoms, budgeted_atoms in zip(full, budgeted, strict=True):
+        assert np.allclose(full_atoms.positions, budgeted_atoms.positions, atol=1e-8)
+        assert np.allclose(full_atoms.cell.array, budgeted_atoms.cell.array, atol=1e-8)
+
+
+def test_optimize_ase_fixed_cell(lj_model: LennardJonesModel) -> None:
+    """Positions-only relaxation leaves the cell unchanged and converges forces."""
+    atoms_list = _rattled_ar_atoms()[:2]
+
+    relaxed = ts.optimize_ase(
+        atoms_list, lj_model, relax_cell=False, fmax=0.02, max_steps=200
+    )
+
+    for original, relaxed_atoms in zip(atoms_list, relaxed, strict=True):
+        assert np.allclose(original.cell.array, relaxed_atoms.cell.array)
+        forces = relaxed_atoms.get_forces()
+        assert np.linalg.norm(forces, axis=1).max() < 0.02

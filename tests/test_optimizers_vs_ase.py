@@ -592,3 +592,46 @@ def test_lbfgs_vs_ase_parametrized(
             state, filtered_ase_atoms, tolerances, f"{test_id_prefix} (Step {checkpoint})"
         )
         last_step = checkpoint
+
+
+def test_optimize_ase_vs_official_serial_ase(
+    ts_mace_mpa: MaceModel,
+    ase_mace_mpa: "MACECalculator",
+    request: pytest.FixtureRequest,
+) -> None:
+    """Batched optimize_ase must reproduce the official serial ASE protocol.
+
+    Both paths run genuine ase.optimize.FIRE + FrechetCellFilter; only the force
+    source differs (batched MaceModel vs serial MACECalculator), so final energies
+    and structures must agree tightly. This validates energy/force/stress unit and
+    sign conventions of the batched calculator end to end.
+    """
+    fixture_names = ["osn2_sim_state", "distorted_fcc_al_conventional_sim_state"]
+    atoms_list = []
+    for name in fixture_names:
+        state = request.getfixturevalue(name).to(dtype=DTYPE, device=ts_mace_mpa.device)
+        atoms_list.extend(ts.io.state_to_atoms(state))
+
+    fmax, max_steps = 0.05, 100
+    batched = ts.optimize_ase(atoms_list, ts_mace_mpa, fmax=fmax, max_steps=max_steps)
+
+    structure_matcher = StructureMatcher(ltol=0.03, stol=0.03, angle_tol=0.1, scale=False)
+    for initial_atoms, batched_atoms in zip(atoms_list, batched, strict=True):
+        ase_atoms = initial_atoms.copy()
+        ase_atoms.calc = ase_mace_mpa
+        opt = FIRE(FrechetCellFilter(ase_atoms), logfile=None)
+        opt.run(fmax=fmax, steps=max_steps)
+
+        assert batched_atoms.info["converged"]
+        energy_diff = abs(
+            batched_atoms.get_potential_energy() - ase_atoms.get_potential_energy()
+        )
+        assert energy_diff < 1e-3, f"Energies differ: {energy_diff=:.2e}"
+
+        ts_structure = ts.io.state_to_structures(
+            ts.io.atoms_to_state(batched_atoms, ts_mace_mpa.device, DTYPE)
+        )[0]
+        ase_structure = ts.io.state_to_structures(
+            ts.io.atoms_to_state(ase_atoms, ts_mace_mpa.device, DTYPE)
+        )[0]
+        assert structure_matcher.fit(ts_structure, ase_structure)

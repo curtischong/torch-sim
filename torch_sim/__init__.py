@@ -91,6 +91,7 @@ from torch_sim.runners import (
     generate_force_convergence_fn,
     integrate,
     optimize,
+    optimize_ase,
     static,
 )
 from torch_sim.state import (
@@ -198,6 +199,7 @@ __all__ = [
     "nvt_vrescale_step",
     "nvt_vrescale_step",
     "optimize",
+    "optimize_ase",
     "optimizers",
     "quantities",
     "runners",
