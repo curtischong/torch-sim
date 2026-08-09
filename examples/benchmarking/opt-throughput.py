@@ -125,6 +125,11 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="Number of structures to relax with ASE (subset, since it is slow).",
     )
+    parser.add_argument(
+        "--skip-batched-ase",
+        action="store_true",
+        help="Skip the batched official-ASE path (ts.optimize_ase).",
+    )
     return parser.parse_args()
 
 
@@ -216,6 +221,56 @@ def run_ase_optimization(
     }
 
 
+def run_batched_ase_optimization(
+    structures: list[dict[str, Any]],
+    model: Any,
+    optimizer_name: str,
+    cell_filter_name: str,
+    max_steps: int,
+    f_max: float,
+    max_atoms: int,
+) -> dict[str, Any]:
+    """Run genuine ASE optimizers with batched model calls via ts.optimize_ase."""
+    from ase.filters import ExpCellFilter, FrechetCellFilter
+    from ase.optimize import FIRE, LBFGS
+    from pymatgen.core import Structure
+    from pymatgen.io.ase import AseAtomsAdaptor
+
+    import torch_sim as ts
+
+    adaptor = AseAtomsAdaptor()
+    atoms_list = [adaptor.get_atoms(Structure.from_dict(s)) for s in structures]
+    cell_filter_cls = {
+        "frechet": FrechetCellFilter,
+        "exp": ExpCellFilter,
+        "none": None,
+    }[cell_filter_name]
+
+    t0 = time.perf_counter()
+    relaxed = ts.optimize_ase(
+        atoms_list,
+        model,
+        optimizer_cls=LBFGS if optimizer_name == "lbfgs" else FIRE,
+        cell_filter_cls=cell_filter_cls,
+        relax_cell=cell_filter_cls is not None,
+        fmax=f_max,
+        max_steps=max_steps,
+        max_atoms=max_atoms,
+    )
+    elapsed = time.perf_counter() - t0
+
+    n = len(relaxed)
+    converged = int(sum(atoms.info["converged"] for atoms in relaxed))
+    return {
+        "n_relaxed": n,
+        "n_converged": converged,
+        "converged_pct": round(100 * converged / n, 1) if n else 0,
+        "total_s": round(elapsed, 3),
+        "s_per_structure": round(elapsed / n, 4) if n else 0,
+        "structures_per_min": round(n / elapsed * 60, 2) if elapsed > 0 else 0,
+    }
+
+
 def load_model(
     model_type: str,
     model_path: str | None,
@@ -235,10 +290,9 @@ def load_model(
             mace_mp,
         )
 
-        from torch_sim.models.mace import MaceModel, MaceUrls
+        from torch_sim.models.mace import MaceModel
 
-        path = model_path or MaceUrls.mace_mp_small
-        local_path = download_mace_mp_checkpoint(path)
+        local_path = download_mace_mp_checkpoint(model_path or "small")
         model = MaceModel(model=local_path, device=device, dtype=dtype, enable_cueq=False)
         calculator = mace_mp(
             model=local_path,
@@ -383,6 +437,28 @@ def main() -> None:
         )
         clear_gpu_memory()
 
+    batched_ase_metrics: dict[str, Any] = {}
+    if not args.skip_batched_ase:
+        print(
+            f"Running batched official ASE {args.optimizer.upper()} on "
+            f"{len(structures)} structures (cell_filter={args.cell_filter})..."
+        )
+        batched_ase_metrics = run_batched_ase_optimization(
+            structures=structures,
+            model=model,
+            optimizer_name=args.optimizer,
+            cell_filter_name=args.cell_filter,
+            max_steps=args.max_steps,
+            f_max=args.f_max,
+            max_atoms=max_atoms,
+        )
+        print(
+            f"  batched ASE: {batched_ase_metrics['n_converged']}/"
+            f"{batched_ase_metrics['n_relaxed']} converged "
+            f"— {batched_ase_metrics['structures_per_min']} structures/min"
+        )
+        clear_gpu_memory()
+
     print(
         f"Running torch-sim {args.optimizer.upper()} (max_steps={args.max_steps}, "
         f"f_max={args.f_max}, cell_filter={args.cell_filter})..."
@@ -422,6 +498,7 @@ def main() -> None:
         "n_atoms_max": max(n_atoms_list),
         **{f"ts_{k}": v for k, v in ts_metrics.items()},
         **{f"ase_{k}": v for k, v in ase_metrics.items()},
+        **{f"batched_ase_{k}": v for k, v in batched_ase_metrics.items()},
         "speedup_vs_ase": speedup,
     }
 

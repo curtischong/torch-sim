@@ -945,8 +945,8 @@ def optimize_ase(  # noqa: C901, PLR0915
             )
             opt_kwargs = {"logfile": None, **(optimizer_kwargs or {})}
             opt = optimizer_cls(optimizable, **opt_kwargs)
-            converged[worker_id] = opt.run(fmax=fmax, steps=max_steps)
-            opt_steps[worker_id] = opt.get_number_of_steps()
+            converged[worker_id] = bool(opt.run(fmax=fmax, steps=max_steps))
+            opt_steps[worker_id] = int(opt.get_number_of_steps())
         except Exception as exc:  # noqa: BLE001
             errors[worker_id] = exc
         finally:

@@ -149,10 +149,9 @@ def load_model(
             mace_mp,
         )
 
-        from torch_sim.models.mace import MaceModel, MaceUrls
+        from torch_sim.models.mace import MaceModel
 
-        path = model_path or MaceUrls.mace_mp_small
-        local_path = download_mace_mp_checkpoint(path)
+        local_path = download_mace_mp_checkpoint(model_path or "small")
         dtype_str = str(dtype).split(".")[-1]
         model = MaceModel(model=local_path, device=device, dtype=dtype, enable_cueq=False)
         calculator = mace_mp(
