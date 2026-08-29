@@ -324,6 +324,25 @@ def calc_heat_flux(
     return conv_sum + virial_sum
 
 
+def system_wise_max_norm(
+    vectors: torch.Tensor, system_idx: torch.Tensor, n_systems: int
+) -> torch.Tensor:
+    """Compute the maximum per-atom vector norm in each system.
+
+    Args:
+        vectors (torch.Tensor): Per-atom vectors, shape (n_atoms, 3).
+        system_idx (torch.Tensor): System index of each atom, shape (n_atoms,).
+        n_systems (int): Number of systems.
+
+    Returns:
+        torch.Tensor: Maximum norm per system, shape (n_systems,)
+    """
+    max_norms = torch.zeros(n_systems, device=vectors.device, dtype=vectors.dtype)
+    return max_norms.scatter_reduce(
+        dim=0, index=system_idx, src=vectors.norm(dim=1), reduce="amax"
+    )
+
+
 def system_wise_max_force[T: MDState | OptimState](state: T) -> torch.Tensor:
     """Compute the maximum force per system.
 
@@ -333,10 +352,4 @@ def system_wise_max_force[T: MDState | OptimState](state: T) -> torch.Tensor:
     Returns:
         torch.Tensor: Maximum forces per system
     """
-    system_wise_max_force = torch.zeros(
-        state.n_systems, device=state.device, dtype=state.dtype
-    )
-    max_forces = state.forces.norm(dim=1)
-    return system_wise_max_force.scatter_reduce(
-        dim=0, index=state.system_idx, src=max_forces, reduce="amax"
-    )
+    return system_wise_max_norm(state.forces, state.system_idx, state.n_systems)

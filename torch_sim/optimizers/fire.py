@@ -52,7 +52,7 @@ def fire_init(
         - Use cell_filter=UNIT_CELL_FILTER or FRECHET_CELL_FILTER for cell optimization
     """
     # Import here to avoid circular imports
-    from torch_sim.optimizers import CellFireState, FireFlavor, FireState
+    from torch_sim.optimizers import CellFireState, FireFlavor, FireState, ase_fire_key
 
     if fire_flavor not in get_args(FireFlavor):
         raise ValueError(f"Unknown {fire_flavor=}, must be one of {get_args(FireFlavor)}")
@@ -96,6 +96,10 @@ def fire_init(
         cell_filter_funcs = init_fn, _step_fn = ts.get_cell_filter(cell_filter)
         fire_attrs["reference_cell"] = state.cell.clone()
         fire_attrs["cell_filter"] = cell_filter_funcs
+        # Only the ASE flavor steps on forces @ deform_grad, mirroring ASE's cell
+        # filters; vv_fire steps on raw forces. Recorded on the state so the
+        # convergence check in the runner reduces over the same forces.
+        fire_attrs["use_deform_grad_forces"] = fire_flavor == ase_fire_key
         cell_state = CellFireState.from_state(state, **fire_attrs)
 
         # Initialize cell-specific attributes
