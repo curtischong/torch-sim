@@ -1110,6 +1110,44 @@ def test_cell_optim_state_deform_grad_forces(
     torch.testing.assert_close(state.deform_grad_forces(), state.forces / scale)
 
 
+@pytest.mark.parametrize(
+    ("init_fn", "init_kwargs", "steps_on_deform_grad_forces"),
+    [
+        (ts.fire_init, {"fire_flavor": "ase_fire"}, True),
+        (ts.fire_init, {"fire_flavor": "vv_fire"}, False),
+        (ts.bfgs_init, {}, True),
+        (ts.lbfgs_init, {}, True),
+        (ts.gradient_descent_init, {}, False),
+    ],
+)
+def test_force_convergence_fn_uses_optimizer_forces(
+    ar_supercell_sim_state: SimState,
+    lj_model: ModelInterface,
+    init_fn: Callable[..., CellOptimState],
+    init_kwargs: dict[str, str],
+    steps_on_deform_grad_forces: bool,  # noqa: FBT001
+) -> None:
+    """The fmax criterion reduces over the forces the optimizer steps on."""
+    state = init_fn(
+        state=ar_supercell_sim_state,
+        model=lj_model,
+        cell_filter=ts.CellFilter.unit,
+        **init_kwargs,
+    )
+    assert state.use_deform_grad_forces == steps_on_deform_grad_forces
+
+    # a tolerance between raw_fmax and raw_fmax / scale converges on raw forces
+    # but not on deform-grad forces once reference_cell is shrunk by scale
+    scale = 0.95
+    raw_fmax = ts.system_wise_max_force(state).item()
+    convergence_fn = ts.generate_force_convergence_fn(
+        force_tol=(raw_fmax + raw_fmax / scale) / 2
+    )
+    assert convergence_fn(state).all()
+    state.reference_cell = state.cell.clone() * scale
+    assert convergence_fn(state).all() == (not steps_on_deform_grad_forces)
+
+
 def test_frechet_lbfgs_clamps_extreme_deformation(
     ar_supercell_sim_state: SimState, lj_model: ModelInterface
 ) -> None:

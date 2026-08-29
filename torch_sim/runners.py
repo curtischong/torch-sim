@@ -21,7 +21,13 @@ from torch_sim.autobatching import BinningAutoBatcher, InFlightAutoBatcher
 from torch_sim.integrators import INTEGRATOR_KWARG_UNITS, INTEGRATOR_REGISTRY, Integrator
 from torch_sim.integrators.md import MDState
 from torch_sim.models.interface import ModelInterface
-from torch_sim.optimizers import OPTIM_REGISTRY, FireState, Optimizer, OptimState
+from torch_sim.optimizers import (
+    OPTIM_REGISTRY,
+    CellOptimState,
+    FireState,
+    Optimizer,
+    OptimState,
+)
 from torch_sim.state import _CANONICAL_MODEL_KEYS, SimState, detach_state_graph
 from torch_sim.trajectory import TrajectoryReporter
 from torch_sim.typing import StateLike
@@ -575,6 +581,11 @@ def generate_force_convergence_fn[T: MDState | FireState](
     """Generate a force-based convergence function for the convergence_fn argument
     of the optimize function.
 
+    For cell optimization states the check reduces over ``optimizer_forces()``,
+    the forces the driving optimizer actually steps on: deformation gradient
+    space forces for ``ase_fire``, ``bfgs`` and ``lbfgs`` (as ASE's cell filters
+    report to their optimizers), raw forces for ``vv_fire`` and gradient descent.
+
     Args:
         force_tol (float): Force tolerance for convergence
         include_cell_forces (bool): Whether to include the `cell_forces` in
@@ -595,7 +606,14 @@ def generate_force_convergence_fn[T: MDState | FireState](
             torch.Tensor: Boolean tensor of shape (n_systems,) indicating
                 convergence status for each system.
         """
-        force_conv = ts.system_wise_max_force(state) < force_tol
+        forces = (
+            state.optimizer_forces()
+            if isinstance(state, CellOptimState)
+            else state.forces
+        )
+        force_conv = (
+            ts.system_wise_max_norm(forces, state.system_idx, state.n_systems) < force_tol
+        )
 
         if include_cell_forces:
             if (cell_forces := getattr(state, "cell_forces", None)) is None:
