@@ -433,6 +433,9 @@ class CellOptimState(OptimState, DeformGradMixin):
     hydrostatic_strain: bool = False
     constant_volume: bool = False
     frechet_method: str | None = None
+    # whether the driving optimizer steps on deform_grad_forces() rather than
+    # forces; fixed per optimizer except FIRE, where it depends on the flavor
+    use_deform_grad_forces: bool = False
     cell_positions: torch.Tensor = field(default_factory=lambda: None)
     cell_forces: torch.Tensor = field(default_factory=lambda: None)
     cell_masses: torch.Tensor = field(default_factory=lambda: None)
@@ -450,6 +453,7 @@ class CellOptimState(OptimState, DeformGradMixin):
         "hydrostatic_strain",
         "constant_volume",
         "frechet_method",
+        "use_deform_grad_forces",
     }
 
     def deform_grad_forces(self) -> torch.Tensor:
@@ -491,6 +495,19 @@ class CellOptimState(OptimState, DeformGradMixin):
             frac_positions.unsqueeze(1), self.deform_grad()[self.system_idx].mT
         ).squeeze(1)
 
+    def optimizer_forces(self) -> torch.Tensor:
+        """Atomic forces as the optimizer driving this state sees them.
+
+        ``deform_grad_forces()`` when ``use_deform_grad_forces`` is set (the
+        optimizer steps in deformation gradient space, as ASE's cell filters do),
+        otherwise the raw Cartesian ``forces``. Convergence checks should reduce
+        over these so they measure the gradient the optimizer actually descends.
+
+        Returns:
+            The atomic forces, shape (n_atoms, 3)
+        """
+        return self.deform_grad_forces() if self.use_deform_grad_forces else self.forces
+
 
 @dataclass(kw_only=True)
 class CellFireState(CellOptimState, FireState):
@@ -517,6 +534,7 @@ class CellBFGSState(CellOptimState, BFGSState):
     # Previous cell state for Hessian update
     prev_cell_positions: torch.Tensor = field(default_factory=lambda: None)
     prev_cell_forces: torch.Tensor = field(default_factory=lambda: None)
+    use_deform_grad_forces: bool = True
 
     _atom_attributes = (
         CellOptimState._atom_attributes  # noqa: SLF001
@@ -545,6 +563,7 @@ class CellLBFGSState(CellOptimState, LBFGSState):
     # Previous cell state for history update
     prev_cell_positions: torch.Tensor = field(default_factory=lambda: None)
     prev_cell_forces: torch.Tensor = field(default_factory=lambda: None)
+    use_deform_grad_forces: bool = True
 
     _atom_attributes = (
         CellOptimState._atom_attributes  # noqa: SLF001
