@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import torch
 from ase import Atoms
+from ase.geometry import find_mic as ase_find_mic
 from ase.geometry import wrap_positions as ase_wrap_positions
 from ase.neighborlist import neighbor_list
 
@@ -856,6 +857,78 @@ def test_minimum_image_displacement(
     cell = torch.tensor(cell, dtype=DTYPE)
     result = tst.minimum_image_displacement(dr=dr_tensor, cell=cell, pbc=pbc)
     torch.testing.assert_close(result, torch.tensor(expected, dtype=DTYPE))
+
+
+def test_minimum_image_displacement_skewed_cell_issue_592() -> None:
+    """Regression test for component rounding failing in a skewed periodic cell."""
+    cell = torch.tensor(
+        [[1.0, 0.9, 0.0], [0.0, 0.1, 0.0], [0.0, 0.0, 1.0]],
+        dtype=torch.float64,
+    )
+    fractional = torch.tensor([0.49, 0.49, 0.0], dtype=torch.float64)
+    displacement = cell @ fractional
+
+    result = tst.minimum_image_displacement(
+        dr=displacement,
+        cell=cell,
+        pbc=torch.tensor([True, True, False]),
+    )
+
+    expected = torch.tensor([0.031, -0.051, 0.0], dtype=torch.float64)
+    torch.testing.assert_close(result, expected)
+    assert torch.linalg.vector_norm(result) < torch.linalg.vector_norm(displacement)
+
+
+@pytest.mark.parametrize(
+    ("cell", "pbc"),
+    [
+        (
+            [
+                [2.0, 1.8, 0.4],
+                [0.0, 0.3, 0.2],
+                [0.0, 0.0, 1.7],
+            ],
+            [True, True, True],
+        ),
+        (
+            [
+                [1.0, 0.0, 0.9],
+                [0.0, 0.0, 0.1],
+                [0.0, 2.0, 0.0],
+            ],
+            [True, False, True],
+        ),
+    ],
+)
+def test_minimum_image_displacement_skewed_cell_matches_ase(
+    cell: list[list[float]], pbc: list[bool]
+) -> None:
+    """Test batched displacements against ASE for full and partial periodicity."""
+    cell_tensor = torch.tensor(cell, dtype=torch.float64)
+    fractional = torch.tensor(
+        [
+            [[0.49, 0.49, 0.21], [2.4, -1.7, 0.33]],
+            [[-0.8, 1.2, -2.1], [3.7, 4.4, -0.65]],
+        ],
+        dtype=torch.float64,
+    )
+    displacements = fractional @ cell_tensor.mT
+
+    result = tst.minimum_image_displacement(
+        dr=displacements,
+        cell=cell_tensor,
+        pbc=torch.tensor(pbc),
+    )
+    expected, _ = ase_find_mic(
+        displacements.reshape(-1, 3).numpy(),
+        cell_tensor.mT.numpy(),
+        pbc=pbc,
+    )
+
+    assert result.shape == displacements.shape
+    np.testing.assert_allclose(
+        result.reshape(-1, 3).numpy(), expected, rtol=1e-12, atol=1e-12
+    )
 
 
 @pytest.mark.parametrize(
