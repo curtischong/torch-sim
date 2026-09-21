@@ -11,7 +11,7 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import chain
-from typing import Any
+from typing import Any, Literal
 
 import torch
 from tqdm import tqdm
@@ -21,13 +21,7 @@ from torch_sim.autobatching import BinningAutoBatcher, InFlightAutoBatcher
 from torch_sim.integrators import INTEGRATOR_KWARG_UNITS, INTEGRATOR_REGISTRY, Integrator
 from torch_sim.integrators.md import MDState
 from torch_sim.models.interface import ModelInterface
-from torch_sim.optimizers import (
-    OPTIM_REGISTRY,
-    CellOptimState,
-    FireState,
-    Optimizer,
-    OptimState,
-)
+from torch_sim.optimizers import OPTIM_REGISTRY, CellOptimState, Optimizer, OptimState
 from torch_sim.state import _CANONICAL_MODEL_KEYS, SimState, detach_state_graph
 from torch_sim.trajectory import TrajectoryReporter
 from torch_sim.typing import StateLike
@@ -575,26 +569,37 @@ def _chunked_apply[T: SimState](
     return ts.concatenate_states(ordered_states)
 
 
-def generate_force_convergence_fn[T: MDState | FireState](
-    force_tol: float = 1e-1, *, include_cell_forces: bool = False
+def generate_force_convergence_fn[T: MDState | OptimState](
+    force_tol: float = 1e-1,
+    *,
+    include_cell_forces: bool = False,
+    force_space: Literal["cartesian", "deformation"] = "cartesian",
 ) -> Callable:
     """Generate a force-based convergence function for the convergence_fn argument
     of the optimize function.
 
-    For cell optimization states the check reduces over ``optimizer_forces()``,
-    the forces the driving optimizer actually steps on: deformation gradient
-    space forces for ``ase_fire``, ``bfgs`` and ``lbfgs`` (as ASE's cell filters
-    report to their optimizers), raw forces for ``vv_fire`` and gradient descent.
+    The caller selects the atomic force space independently of the optimizer.
+    By default, the check uses raw Cartesian forces. Select deformation space
+    and include cell forces for ASE-style cell-filter convergence.
 
     Args:
         force_tol (float): Force tolerance for convergence
         include_cell_forces (bool): Whether to include the `cell_forces` in
             the convergence check. Defaults to False.
+        force_space: Atomic force space used for convergence. "cartesian" uses
+            raw forces; "deformation" uses ``forces @ deform_grad`` and requires
+            a CellOptimState. This choice does not affect the cell-force check.
 
     Returns:
         Convergence function that takes a state and last energy and
         returns a systemwise boolean function
+
+    Raises:
+        ValueError: If force_space is unknown, or the returned function is called
+            with deformation space selected and a state without a cell filter.
     """
+    if force_space not in ("cartesian", "deformation"):
+        raise ValueError(f"Unknown {force_space=}, must be 'cartesian' or 'deformation'")
 
     def convergence_fn(
         state: T,
@@ -606,11 +611,11 @@ def generate_force_convergence_fn[T: MDState | FireState](
             torch.Tensor: Boolean tensor of shape (n_systems,) indicating
                 convergence status for each system.
         """
-        forces = (
-            state.optimizer_forces()
-            if isinstance(state, CellOptimState)
-            else state.forces
-        )
+        forces = state.forces
+        if force_space == "deformation":
+            if not isinstance(state, CellOptimState):
+                raise ValueError("Deformation force space requires a CellOptimState")
+            forces = state.deform_grad_forces()
         force_conv = (
             ts.system_wise_max_norm(forces, state.system_idx, state.n_systems) < force_tol
         )

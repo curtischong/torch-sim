@@ -1068,6 +1068,20 @@ def test_generate_force_convergence_fn(
         assert result.shape == (state.n_systems,)
 
 
+def test_generate_force_convergence_fn_invalid_force_space() -> None:
+    with pytest.raises(ValueError, match="Unknown force_space"):
+        ts.generate_force_convergence_fn(force_space="invalid")
+
+
+def test_generate_force_convergence_fn_deformation_requires_cell_state(
+    ar_supercell_sim_state: SimState, lj_model: LennardJonesModel
+) -> None:
+    state = ts.fire_init(ar_supercell_sim_state, lj_model)
+    convergence_fn = ts.generate_force_convergence_fn(force_space="deformation")
+    with pytest.raises(ValueError, match="requires a CellOptimState"):
+        convergence_fn(state)
+
+
 def test_generate_force_convergence_fn_tolerance_ordering(
     ar_supercell_sim_state: SimState, lj_model: LennardJonesModel
 ) -> None:

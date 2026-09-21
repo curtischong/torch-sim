@@ -1111,41 +1111,91 @@ def test_cell_optim_state_deform_grad_forces(
 
 
 @pytest.mark.parametrize(
-    ("init_fn", "init_kwargs", "steps_on_deform_grad_forces"),
+    ("init_fn", "init_kwargs"),
     [
-        (ts.fire_init, {"fire_flavor": "ase_fire"}, True),
-        (ts.fire_init, {"fire_flavor": "vv_fire"}, False),
-        (ts.bfgs_init, {}, True),
-        (ts.lbfgs_init, {}, True),
-        (ts.gradient_descent_init, {}, False),
+        (ts.fire_init, {"fire_flavor": "ase_fire"}),
+        (ts.fire_init, {"fire_flavor": "vv_fire"}),
+        (ts.bfgs_init, {}),
+        (ts.lbfgs_init, {}),
+        (ts.gradient_descent_init, {}),
     ],
 )
-def test_force_convergence_fn_uses_optimizer_forces(
-    ar_supercell_sim_state: SimState,
+@pytest.mark.parametrize("cell_filter", [ts.CellFilter.unit, ts.CellFilter.frechet])
+def test_force_convergence_fn_uses_selected_force_space(
+    ar_double_sim_state: SimState,
     lj_model: ModelInterface,
     init_fn: Callable[..., CellOptimState],
     init_kwargs: dict[str, str],
-    steps_on_deform_grad_forces: bool,  # noqa: FBT001
+    cell_filter: ts.CellFilter,
 ) -> None:
-    """The fmax criterion reduces over the forces the optimizer steps on."""
+    """Force space and cell-force checks are independent of the optimizer."""
     state = init_fn(
-        state=ar_supercell_sim_state,
+        state=ar_double_sim_state,
         model=lj_model,
-        cell_filter=ts.CellFilter.unit,
+        cell_filter=cell_filter,
         **init_kwargs,
     )
-    assert state.use_deform_grad_forces == steps_on_deform_grad_forces
-
-    # a tolerance between raw_fmax and raw_fmax / scale converges on raw forces
-    # but not on deform-grad forces once reference_cell is shrunk by scale
-    scale = 0.95
-    raw_fmax = ts.system_wise_max_force(state).item()
-    convergence_fn = ts.generate_force_convergence_fn(
-        force_tol=(raw_fmax + raw_fmax / scale) / 2
+    state.forces.zero_()
+    state.forces[:, 0] = 0.08
+    cartesian = ts.generate_force_convergence_fn(force_tol=0.1)
+    deformation = ts.generate_force_convergence_fn(
+        force_tol=0.1, force_space="deformation"
     )
-    assert convergence_fn(state).all()
-    state.reference_cell = state.cell.clone() * scale
-    assert convergence_fn(state).all() == (not steps_on_deform_grad_forces)
+    assert cartesian(state).tolist() == [True, True]
+    assert deformation(state).tolist() == [True, True]
+
+    # Transformed force magnitudes become 0.16 and 0.04; raw forces stay 0.08.
+    state.reference_cell[0] *= 0.5
+    state.reference_cell[1] *= 2.0
+    assert cartesian(state).tolist() == [True, True]
+    assert deformation(state).tolist() == [False, True]
+    assert ts.generate_force_convergence_fn(force_space="cartesian")(state).all()
+    torch.testing.assert_close(
+        ts.system_wise_max_force(state), state.forces.new_full((2,), 0.08)
+    )
+
+    state.cell_forces.zero_()
+    state.cell_forces[1, 0, 0] = 0.2
+    for force_space, expected in [
+        ("cartesian", [True, False]),
+        ("deformation", [False, False]),
+    ]:
+        convergence_fn = ts.generate_force_convergence_fn(
+            force_tol=0.1, force_space=force_space, include_cell_forces=True
+        )
+        assert convergence_fn(state).tolist() == expected
+
+
+@pytest.mark.parametrize(
+    ("source_init", "source_kwargs", "target_init"),
+    [
+        (ts.fire_init, {"fire_flavor": "vv_fire"}, ts.bfgs_init),
+        (ts.gradient_descent_init, {}, ts.lbfgs_init),
+        (ts.fire_init, {}, ts.gradient_descent_init),
+    ],
+)
+def test_force_convergence_fn_after_switching_optimizer(
+    ar_supercell_sim_state: SimState,
+    lj_model: ModelInterface,
+    source_init: Callable[..., CellOptimState],
+    source_kwargs: dict[str, str],
+    target_init: Callable[..., CellOptimState],
+) -> None:
+    """Reinitializing an optimizer cannot change the chosen convergence criterion."""
+    source = source_init(
+        ar_supercell_sim_state,
+        lj_model,
+        cell_filter=ts.CellFilter.unit,
+        **source_kwargs,
+    )
+    state = target_init(source, lj_model, cell_filter=ts.CellFilter.unit)
+    state.forces.zero_()
+    state.forces[:, 0] = 0.08
+    state.reference_cell *= 0.5
+    assert ts.generate_force_convergence_fn(force_tol=0.1)(state).all()
+    assert not ts.generate_force_convergence_fn(force_tol=0.1, force_space="deformation")(
+        state
+    ).any()
 
 
 def test_frechet_lbfgs_clamps_extreme_deformation(
