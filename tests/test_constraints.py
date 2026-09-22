@@ -770,6 +770,7 @@ def test_count_degrees_of_freedom_rejects_out_of_bounds_constraint(
     ("cell_filter", "fire_flavor"),
     [
         (ts.CellFilter.unit, "ase_fire"),
+        (ts.CellFilter.unit, "vv_fire"),
         (ts.CellFilter.frechet, "ase_fire"),
         (ts.CellFilter.frechet, "vv_fire"),
     ],
@@ -792,7 +793,7 @@ def test_cell_optimization_with_constraints(
         fire_flavor=fire_flavor,
     )
     for _ in range(50):
-        state = ts.fire_step(state, lj_model, dt_max=0.1)
+        state = ts.fire_step(state, lj_model, dt_max=0.1, fire_flavor=fire_flavor)
         if state.forces.abs().max() < 0.05:
             break
     assert len(state.constraints) > 0

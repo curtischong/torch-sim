@@ -133,7 +133,9 @@ def test_fire_optimization(
     max_steps = 1000  # Add max step to prevent infinite loop
     steps_taken = 0
     while abs(energies[-2] - energies[-1]) > 1e-6 and steps_taken < max_steps:
-        state = ts.fire_step(state=state, model=lj_model, dt_max=0.3)
+        state = ts.fire_step(
+            state=state, model=lj_model, dt_max=0.3, fire_flavor=fire_flavor
+        )
         energies.append(state.energy.item())
         steps_taken += 1
 
@@ -687,6 +689,7 @@ def test_fire_vv_negative_power_branch(
     updated_state = ts.fire_step(
         state=state_to_update,
         model=lj_model,
+        fire_flavor="vv_fire",
         f_dec=f_dec,
         dt_max=dt_max_val,
         n_min=0,  # Allow dt to change immediately
@@ -747,7 +750,7 @@ def test_fire_nan_velocities_dont_affect_other_systems(
 
     # Evolve 10 steps so system 0 has non-trivial FIRE state (dt, alpha, n_pos)
     for _ in range(10):
-        state = ts.fire_step(state=state, model=lj_model)
+        state = ts.fire_step(state=state, model=lj_model, fire_flavor=fire_flavor)
 
     # Clone, then inject NaN into system 1 of one copy
     state_clean = copy.deepcopy(state)
@@ -759,8 +762,8 @@ def test_fire_nan_velocities_dont_affect_other_systems(
         state_mixed.cell_velocities[1] = float("nan")
 
     # One step each
-    state_clean = ts.fire_step(state=state_clean, model=lj_model)
-    state_mixed = ts.fire_step(state=state_mixed, model=lj_model)
+    state_clean = ts.fire_step(state=state_clean, model=lj_model, fire_flavor=fire_flavor)
+    state_mixed = ts.fire_step(state=state_mixed, model=lj_model, fire_flavor=fire_flavor)
 
     # System 0 must be identical regardless of system 1's NaN velocities
     sys0 = state_clean.system_idx == 0
@@ -783,6 +786,88 @@ def test_fire_nan_velocities_dont_affect_other_systems(
         assert torch.equal(state_mixed.cell[0], state_clean.cell[0]), (
             "System 0 cell differs when system 1 has NaN velocities"
         )
+
+
+@pytest.mark.parametrize("cell_filter", [ts.CellFilter.unit, ts.CellFilter.frechet])
+def test_vv_fire_cell_verlet_step(
+    ar_supercell_sim_state: SimState,
+    lj_model: ModelInterface,
+    cell_filter: ts.CellFilter,
+) -> None:
+    """Both cell half-kicks use their respective forces and each system's dt/mass."""
+    multi = ts.concatenate_states(
+        [ar_supercell_sim_state, copy.deepcopy(ar_supercell_sim_state)]
+    )
+    multi.set_cell(multi.cell * 0.95, scale_atoms=True)
+    multi.masses[multi.system_idx == 1] *= 2
+    state = ts.fire_init(
+        multi,
+        lj_model,
+        cell_filter=cell_filter,
+        fire_flavor="vv_fire",
+        dt_start=torch.tensor([0.1, 0.2], device=multi.device, dtype=multi.dtype),
+        alpha_start=0.0,
+    )
+    cell_positions = state.cell_positions.clone()
+    cell_forces = state.cell_forces.clone()
+    cell_dt = state.dt.view(-1, 1, 1).clone()
+    cell_mass = state.cell_masses.unsqueeze(-1)
+    expected_positions = cell_positions + 0.5 * cell_dt.square() * cell_forces / cell_mass
+    expected_deformation = expected_positions / state.cell_factor
+    if cell_filter == ts.CellFilter.frechet:
+        expected_deformation = torch.matrix_exp(expected_deformation)
+    expected_cell = expected_deformation @ state.reference_cell
+
+    state = ts.fire_step(state, lj_model, fire_flavor="vv_fire")
+
+    torch.testing.assert_close(
+        state.cell_positions, expected_positions, atol=1e-12, rtol=1e-12
+    )
+    torch.testing.assert_close(state.cell, expected_cell, atol=1e-12, rtol=1e-12)
+    torch.testing.assert_close(
+        state.cell_velocities,
+        0.5 * cell_dt * (cell_forces + state.cell_forces) / cell_mass,
+        atol=1e-12,
+        rtol=1e-12,
+    )
+    # The force evaluation must see the updated cell and atomic positions.
+    output = lj_model(state)
+    torch.testing.assert_close(state.energy, output["energy"])
+    torch.testing.assert_close(state.stress, output["stress"])
+
+
+@pytest.mark.parametrize("cell_filter", [ts.CellFilter.unit, ts.CellFilter.frechet])
+def test_vv_fire_cell_constraints_resync(
+    ar_supercell_sim_state: SimState,
+    lj_model: ModelInterface,
+    cell_filter: ts.CellFilter,
+) -> None:
+    """Cell constraints project a nonsymmetric proposal and resync filter coordinates."""
+    from torch_sim.constraints import FixSymmetry
+
+    ar_supercell_sim_state.constraints = [FixSymmetry.from_state(ar_supercell_sim_state)]
+    state = ts.fire_init(
+        ar_supercell_sim_state,
+        lj_model,
+        cell_filter=cell_filter,
+        fire_flavor="vv_fire",
+    )
+    state.velocities.zero_()
+    state.cell_velocities.zero_()
+    state.cell_velocities[0, 0, 0] = 0.1
+    state.cell_velocities[0, 0, 1] = 0.1
+
+    for _ in range(2):
+        state = ts.fire_step(state, lj_model, fire_flavor="vv_fire")
+        deformation = state.deform_grad()
+        identity = torch.eye(3, device=state.device, dtype=state.dtype).unsqueeze(0)
+        torch.testing.assert_close(deformation, deformation[0, 0, 0] * identity)
+        filter_deformation = state.cell_positions / state.cell_factor
+        if cell_filter == ts.CellFilter.frechet:
+            filter_deformation = torch.matrix_exp(filter_deformation)
+        torch.testing.assert_close(filter_deformation, deformation)
+
+    assert not torch.allclose(state.cell, state.reference_cell)
 
 
 @pytest.mark.parametrize("fire_flavor", get_args(FireFlavor))
@@ -828,7 +913,9 @@ def test_unit_cell_fire_optimization(
     steps_taken = 0
 
     while abs(energies[-2] - energies[-1]) > 1e-6 and steps_taken < max_steps:
-        state = ts.fire_step(state=state, model=lj_model, dt_max=0.3)
+        state = ts.fire_step(
+            state=state, model=lj_model, dt_max=0.3, fire_flavor=fire_flavor
+        )
         energies.append(state.energy.item())
         steps_taken += 1
 
@@ -1047,7 +1134,9 @@ def test_frechet_cell_fire_optimization(
     steps_taken = 0
 
     while abs(energies[-2] - energies[-1]) > 1e-6 and steps_taken < max_steps:
-        state = ts.fire_step(state=state, model=lj_model, dt_max=0.3)
+        state = ts.fire_step(
+            state=state, model=lj_model, dt_max=0.3, fire_flavor=fire_flavor
+        )
         energies.append(state.energy.item())
         steps_taken += 1
 

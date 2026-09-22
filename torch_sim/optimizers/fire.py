@@ -176,6 +176,57 @@ def fire_step(
     return step_func(state, **step_func_kwargs)
 
 
+def _fire_update_cell(state: CellFireState, dr_cell: torch.Tensor) -> None:
+    """Apply a FIRE cell displacement and resync filter coordinates after constraints."""
+    # Update cell positions directly based on stored cell filter type
+    if hasattr(state, "cell_filter") and state.cell_filter is not None:
+        from torch_sim.optimizers.cell_filters import frechet_cell_filter_init
+
+        init_fn, _step_fn = state.cell_filter
+        is_frechet = init_fn is frechet_cell_filter_init
+
+        # Update cell positions
+        cell_positions_new = state.cell_positions + dr_cell
+        state.cell_positions = cell_positions_new
+
+        if is_frechet:  # Frechet: convert from log space to deformation gradient
+            cell_factor_reshaped = state.cell_factor.view(state.n_systems, 1, 1)
+            deform_grad_log_new = cell_positions_new / cell_factor_reshaped
+            deform_grad_log_new, cell_positions_new = _clamp_deform_grad_log(
+                deform_grad_log_new, cell_positions_new, cell_factor_reshaped
+            )
+            state.cell_positions = cell_positions_new
+            deform_grad_new = torch.matrix_exp(deform_grad_log_new)
+        else:  # Unit cell: positions are scaled deformation gradient
+            cell_factor_expanded = state.cell_factor.expand(state.n_systems, 3, 1)
+            deform_grad_new = cell_positions_new / cell_factor_expanded
+
+        # Compute new cell from deformation gradient
+        new_col_vector_cell = torch.bmm(deform_grad_new, state.reference_cell)
+
+        # Apply cell constraints and scale positions to new cell coordinates
+        # (needed for correct displacement calculation in position constraints)
+        state.set_constrained_cell(new_col_vector_cell, scale_atoms=True)
+
+        # Resync cell_positions to match the (possibly adjusted) cell so
+        # the next step builds on the correct base instead of the
+        # pre-adjustment value.  Without this, any constraint that
+        # modifies the cell (e.g. FixSymmetry) causes a zigzag where the
+        # optimizer repeatedly proposes from a stale cell_positions.
+        adjusted_deform_grad = state.deform_grad()
+        if is_frechet:
+            cell_factor_reshaped = state.cell_factor.view(state.n_systems, 1, 1)
+            state.cell_positions = (
+                tsm.matrix_log_33(adjusted_deform_grad, sim_dtype=state.dtype)
+                * cell_factor_reshaped
+            )
+        else:
+            cell_factor_expanded = state.cell_factor.expand(state.n_systems, 3, 1)
+            state.cell_positions = (
+                adjusted_deform_grad.reshape(state.n_systems, 3, 3) * cell_factor_expanded
+            )
+
+
 def _vv_fire_step[T: "FireState | CellFireState"](  # noqa: PLR0915
     state: T,
     model: "ModelInterface",
@@ -207,10 +258,21 @@ def _vv_fire_step[T: "FireState | CellFireState"](  # noqa: PLR0915
     atom_wise_dt = state.dt[state.system_idx].unsqueeze(-1)
     state.velocities += 0.5 * atom_wise_dt * state.forces / state.masses.unsqueeze(-1)
 
-    # Position update
-    state.set_constrained_positions(state.positions + atom_wise_dt * state.velocities)
-
-    # Cell position updates are handled in the velocity update step above
+    # Position update, including the first cell half-step before evaluating forces.
+    new_positions = state.positions + atom_wise_dt * state.velocities
+    if isinstance(state, CellFireState):
+        cell_wise_dt = state.dt.view(n_systems, 1, 1)
+        state.cell_velocities += (
+            0.5 * cell_wise_dt * state.cell_forces / state.cell_masses.unsqueeze(-1)
+        )
+        # Keep the atomic displacement in Cartesian coordinates, then carry it
+        # into the updated cell before applying position constraints.
+        new_frac_positions = torch.linalg.solve(
+            state.deform_grad()[state.system_idx], new_positions.unsqueeze(-1)
+        ).squeeze(-1)
+        _fire_update_cell(state, cell_wise_dt * state.cell_velocities)
+        new_positions = state.positions_from_frac(new_frac_positions)
+    state.set_constrained_positions(new_positions)
 
     # Get new forces and energy
     model_output = model(state)
@@ -285,7 +347,7 @@ def _vv_fire_step[T: "FireState | CellFireState"](  # noqa: PLR0915
     return state
 
 
-def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
+def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: PLR0915
     state: T,
     model: "ModelInterface",
     *,
@@ -408,54 +470,7 @@ def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
         # Store fractional positions (will transform to Cartesian after cell update)
         new_frac_positions = state.frac_positions() + dr_atom
 
-        # Update cell positions directly based on stored cell filter type
-        if hasattr(state, "cell_filter") and state.cell_filter is not None:
-            from torch_sim.optimizers.cell_filters import frechet_cell_filter_init
-
-            init_fn, _step_fn = state.cell_filter
-            is_frechet = init_fn is frechet_cell_filter_init
-
-            # Update cell positions
-            cell_positions_new = state.cell_positions + dr_cell
-            state.cell_positions = cell_positions_new
-
-            if is_frechet:  # Frechet: convert from log space to deformation gradient
-                cell_factor_reshaped = state.cell_factor.view(state.n_systems, 1, 1)
-                deform_grad_log_new = cell_positions_new / cell_factor_reshaped
-                deform_grad_log_new, cell_positions_new = _clamp_deform_grad_log(
-                    deform_grad_log_new, cell_positions_new, cell_factor_reshaped
-                )
-                state.cell_positions = cell_positions_new
-                deform_grad_new = torch.matrix_exp(deform_grad_log_new)
-            else:  # Unit cell: positions are scaled deformation gradient
-                cell_factor_expanded = state.cell_factor.expand(state.n_systems, 3, 1)
-                deform_grad_new = cell_positions_new / cell_factor_expanded
-
-            # Compute new cell from deformation gradient
-            new_col_vector_cell = torch.bmm(deform_grad_new, state.reference_cell)
-
-            # Apply cell constraints and scale positions to new cell coordinates
-            # (needed for correct displacement calculation in position constraints)
-            state.set_constrained_cell(new_col_vector_cell, scale_atoms=True)
-
-            # Resync cell_positions to match the (possibly adjusted) cell so
-            # the next step builds on the correct base instead of the
-            # pre-adjustment value.  Without this, any constraint that
-            # modifies the cell (e.g. FixSymmetry) causes a zigzag where the
-            # optimizer repeatedly proposes from a stale cell_positions.
-            adjusted_deform_grad = state.deform_grad()
-            if is_frechet:
-                cell_factor_reshaped = state.cell_factor.view(state.n_systems, 1, 1)
-                state.cell_positions = (
-                    tsm.matrix_log_33(adjusted_deform_grad, sim_dtype=state.dtype)
-                    * cell_factor_reshaped
-                )
-            else:
-                cell_factor_expanded = state.cell_factor.expand(state.n_systems, 3, 1)
-                state.cell_positions = (
-                    adjusted_deform_grad.reshape(state.n_systems, 3, 3)
-                    * cell_factor_expanded
-                )
+        _fire_update_cell(state, dr_cell)
 
         # Transform fractional positions to Cartesian using NEW deformation gradient
         state.set_constrained_positions(state.positions_from_frac(new_frac_positions))
