@@ -1072,14 +1072,14 @@ def test_generate_force_convergence_fn(
 
 
 @pytest.mark.parametrize(
-    ("cell_filter", "ase_filter_cls"),
+    ("ts_cell_filter", "ase_cell_filter_cls"),
     [(ts.CellFilter.unit, UnitCellFilter), (ts.CellFilter.frechet, FrechetCellFilter)],
 )
 def test_optimize_fire_cell_convergence_matches_ase(
     ar_atoms: Atoms,
     lj_model: LennardJonesModel,
-    cell_filter: ts.CellFilter,
-    ase_filter_cls: type[UnitCellFilter],
+    ts_cell_filter: ts.CellFilter,
+    ase_cell_filter_cls: type[UnitCellFilter],
 ) -> None:
     """Check that ASE agrees TorchSim's relaxed structure has converged.
     This catches TorchSim stopping while ASE would still require more relaxation.
@@ -1090,8 +1090,6 @@ def test_optimize_fire_cell_convergence_matches_ase(
     # Displace the atoms so relaxation also requires atomic motion.
     atoms.rattle(stdev=0.1, seed=42)
     atoms.calc = LennardJones(sigma=3.405, epsilon=0.0104, rc=2.5 * 3.405)
-    # Create the filter now so it remembers the same starting cell as TorchSim.
-    ase_filter = ase_filter_cls(atoms)
     initial_state = ts.io.atoms_to_state(atoms, lj_model.device, lj_model.dtype)
     force_tol = 0.01
 
@@ -1102,20 +1100,20 @@ def test_optimize_fire_cell_convergence_matches_ase(
         convergence_fn=ts.generate_force_convergence_fn(
             force_tol=force_tol, include_cell_forces=True
         ),
-        init_kwargs={"cell_filter": cell_filter},
+        init_kwargs={"cell_filter": ts_cell_filter},
         steps_between_swaps=1,
         max_steps=1000,
     )
 
-    # Give ASE the final cell and positions. Reuse the filter above so it can
-    # still measure how much the cell changed from the start of relaxation.
+    # Save the starting cell in the filter, then give ASE the relaxed structure.
+    ase_cell_filter = ase_cell_filter_cls(atoms)
     atoms.set_cell(final_state.cell[0].mT.cpu().numpy())
     atoms.set_positions(final_state.positions.cpu().numpy())
     # make sure that ase's forces is the same as torchsim's forces
     np.testing.assert_allclose(
         atoms.get_forces(), final_state.forces.cpu().numpy(), atol=1e-10
     )
-    filtered_fmax = np.linalg.norm(ase_filter.get_forces(), axis=1).max()
+    filtered_fmax = np.linalg.norm(ase_cell_filter.get_forces(), axis=1).max()
     assert filtered_fmax < force_tol, (
         f"TorchSim stopped with ASE cell-filter fmax={filtered_fmax:.6f}, "
         f"above force_tol={force_tol}"
