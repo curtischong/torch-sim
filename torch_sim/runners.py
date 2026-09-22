@@ -616,10 +616,9 @@ def generate_force_convergence_fn[T: MDState | OptimState](
             if not isinstance(state, CellOptimState):
                 raise ValueError("Deformation force space requires a CellOptimState")
             forces = state.deform_grad_forces()
-        max_force = forces.new_zeros(state.n_systems).scatter_reduce(
-            dim=0, index=state.system_idx, src=forces.norm(dim=1), reduce="amax"
+        force_conv = (
+            ts.system_wise_max_norm(forces, state.system_idx, state.n_systems) < force_tol
         )
-        force_conv = max_force < force_tol
 
         if include_cell_forces:
             if (cell_forces := getattr(state, "cell_forces", None)) is None:
