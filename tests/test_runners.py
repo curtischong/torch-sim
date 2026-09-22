@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+from ase import Atoms
 from ase.build.bulk import bulk
 from ase.calculators.lj import LennardJones
 from ase.filters import FrechetCellFilter, UnitCellFilter
@@ -1075,16 +1076,21 @@ def test_generate_force_convergence_fn(
     [(ts.CellFilter.unit, UnitCellFilter), (ts.CellFilter.frechet, FrechetCellFilter)],
 )
 def test_optimize_fire_cell_convergence_matches_ase(
+    ar_atoms: Atoms,
     lj_model: LennardJonesModel,
     cell_filter: ts.CellFilter,
     ase_filter_cls: type[UnitCellFilter],
 ) -> None:
-    """A relaxed crystal must meet fmax in the coordinates FIRE optimizes."""
-    # Start compressed so relaxation changes the deformation gradient. Atomic
-    # displacements ensure the final atomic forces, not just stress, matter.
-    atoms = bulk("Ar", "fcc", a=4.5, cubic=True)
+    """Check that ASE agrees TorchSim's relaxed structure has converged.
+    This catches TorchSim stopping while ASE would still require more relaxation.
+    """
+    atoms = ar_atoms.copy()
+    # Compress the crystal so its cell expands during relaxation.
+    atoms.set_cell(atoms.cell * 0.95, scale_atoms=True)
+    # Displace the atoms so relaxation also requires atomic motion.
     atoms.rattle(stdev=0.1, seed=42)
     atoms.calc = LennardJones(sigma=3.405, epsilon=0.0104, rc=2.5 * 3.405)
+    # Create the filter now so it remembers the same starting cell as TorchSim.
     ase_filter = ase_filter_cls(atoms)
     initial_state = ts.io.atoms_to_state(atoms, lj_model.device, lj_model.dtype)
     force_tol = 0.01
@@ -1101,10 +1107,11 @@ def test_optimize_fire_cell_convergence_matches_ase(
         max_steps=1000,
     )
 
-    # Keep ASE's original reference cell, then independently evaluate the forces
-    # its optimizer would see at TorchSim's returned structure.
+    # Give ASE the final cell and positions. Reuse the filter above so it can
+    # still measure how much the cell changed from the start of relaxation.
     atoms.set_cell(final_state.cell[0].mT.cpu().numpy())
     atoms.set_positions(final_state.positions.cpu().numpy())
+    # make sure that ase's forces is the same as torchsim's forces
     np.testing.assert_allclose(
         atoms.get_forces(), final_state.forces.cpu().numpy(), atol=1e-10
     )
