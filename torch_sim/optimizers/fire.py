@@ -96,6 +96,7 @@ def fire_init(
         cell_filter_funcs = init_fn, _step_fn = ts.get_cell_filter(cell_filter)
         fire_attrs["reference_cell"] = state.cell.clone()
         fire_attrs["cell_filter"] = cell_filter_funcs
+        fire_attrs["use_deform_grad_forces"] = fire_flavor == "ase_fire"
         cell_state = CellFireState.from_state(state, **fire_attrs)
 
         # Initialize cell-specific attributes
@@ -149,6 +150,9 @@ def fire_step(
 
     if fire_flavor not in get_args(FireFlavor):
         raise ValueError(f"Unknown {fire_flavor=}, must be one of {get_args(FireFlavor)}")
+
+    if isinstance(state, CellFireState):
+        state.use_deform_grad_forces = fire_flavor == ase_fire_key
 
     device, dtype = model.device, model.dtype
     eps = 1e-8 if dtype == torch.float32 else 1e-16

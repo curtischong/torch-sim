@@ -573,22 +573,24 @@ def generate_force_convergence_fn[T: MDState | OptimState](
     force_tol: float = 1e-1,
     *,
     include_cell_forces: bool = False,
-    force_space: Literal["cartesian", "deformation"] = "cartesian",
+    force_space: Literal["optimizer", "cartesian", "deformation"] = "optimizer",
 ) -> Callable:
     """Generate a force-based convergence function for the convergence_fn argument
     of the optimize function.
 
-    The caller selects the atomic force space independently of the optimizer.
-    By default, the check uses raw Cartesian forces. Select deformation space
-    and include cell forces for ASE-style cell-filter convergence.
+    By default, the check uses the atomic forces the optimizer steps on:
+    deformation-space forces for cell relaxation with ASE FIRE, BFGS and L-BFGS,
+    and Cartesian forces otherwise. Include cell forces for ASE-style
+    cell-filter convergence.
 
     Args:
         force_tol (float): Force tolerance for convergence
         include_cell_forces (bool): Whether to include the `cell_forces` in
             the convergence check. Defaults to False.
-        force_space: Atomic force space used for convergence. "cartesian" uses
-            raw forces; "deformation" uses ``forces @ deform_grad`` and requires
-            a CellOptimState. This choice does not affect the cell-force check.
+        force_space: Atomic force space used for convergence. "optimizer" follows
+            the optimizer (default); "cartesian" uses raw forces; "deformation"
+            uses ``forces @ deform_grad`` and requires a CellOptimState.
+            This choice does not affect the cell-force check.
 
     Returns:
         Convergence function that takes a state and last energy and
@@ -598,8 +600,10 @@ def generate_force_convergence_fn[T: MDState | OptimState](
         ValueError: If force_space is unknown, or the returned function is called
             with deformation space selected and a state without a cell filter.
     """
-    if force_space not in ("cartesian", "deformation"):
-        raise ValueError(f"Unknown {force_space=}, must be 'cartesian' or 'deformation'")
+    if force_space not in ("optimizer", "cartesian", "deformation"):
+        raise ValueError(
+            f"Unknown {force_space=}, must be 'optimizer', 'cartesian' or 'deformation'"
+        )
 
     def convergence_fn(
         state: T,
@@ -612,7 +616,9 @@ def generate_force_convergence_fn[T: MDState | OptimState](
                 convergence status for each system.
         """
         forces = state.forces
-        if force_space == "deformation":
+        if force_space == "optimizer" and isinstance(state, CellOptimState):
+            forces = state.optimizer_forces()
+        elif force_space == "deformation":
             if not isinstance(state, CellOptimState):
                 raise ValueError("Deformation force space requires a CellOptimState")
             forces = state.deform_grad_forces()
