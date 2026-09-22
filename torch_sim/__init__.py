@@ -85,7 +85,6 @@ from torch_sim.quantities import (
     calc_temperature,
     get_pressure,
     system_wise_max_force,
-    system_wise_max_norm,
 )
 from torch_sim.runners import (
     generate_energy_convergence_fn,
@@ -209,7 +208,6 @@ __all__ = [
     "swap_mc_step",
     "swap_mc_step",
     "system_wise_max_force",
-    "system_wise_max_norm",
     "trajectory",
     "transforms",
     "units",
