@@ -4,7 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+from ase import Atoms
 from ase.build.bulk import bulk
+from ase.calculators.lj import LennardJones
+from ase.filters import FrechetCellFilter, UnitCellFilter
 
 import torch_sim as ts
 from tests.conftest import DEVICE, DTYPE
@@ -1066,6 +1069,91 @@ def test_generate_force_convergence_fn(
         assert isinstance(result, torch.Tensor)
         assert result.dtype == torch.bool
         assert result.shape == (state.n_systems,)
+
+
+@pytest.mark.parametrize(
+    ("ts_cell_filter", "ase_cell_filter_cls"),
+    [(ts.CellFilter.unit, UnitCellFilter), (ts.CellFilter.frechet, FrechetCellFilter)],
+)
+def test_optimize_fire_cell_convergence_matches_ase(
+    ar_atoms: Atoms,
+    lj_model: LennardJonesModel,
+    ts_cell_filter: ts.CellFilter,
+    ase_cell_filter_cls: type[UnitCellFilter],
+) -> None:
+    """Check that ASE agrees TorchSim's relaxed structure has converged.
+    This catches TorchSim stopping while ASE would still require more relaxation.
+    """
+    atoms = ar_atoms.copy()
+    # Compress the crystal so its cell expands during relaxation.
+    atoms.set_cell(atoms.cell * 0.95, scale_atoms=True)
+    # Displace the atoms so relaxation also requires atomic motion.
+    atoms.rattle(stdev=0.1, seed=42)
+    atoms.calc = LennardJones(sigma=3.405, epsilon=0.0104, rc=2.5 * 3.405)
+    initial_state = ts.io.atoms_to_state(atoms, lj_model.device, lj_model.dtype)
+    force_tol = 0.01
+
+    final_state = ts.optimize(
+        initial_state,
+        lj_model,
+        optimizer=ts.Optimizer.fire,
+        convergence_fn=ts.generate_force_convergence_fn(
+            force_tol=force_tol, include_cell_forces=True
+        ),
+        init_kwargs={"cell_filter": ts_cell_filter},
+        steps_between_swaps=1,
+        max_steps=1000,
+    )
+
+    # Save the starting cell in the filter, then give ASE the relaxed structure.
+    ase_cell_filter = ase_cell_filter_cls(atoms)
+    atoms.set_cell(final_state.cell[0].mT.cpu().numpy())
+    atoms.set_positions(final_state.positions.cpu().numpy())
+    # make sure that ase's forces is the same as torchsim's forces
+    np.testing.assert_allclose(
+        atoms.get_forces(), final_state.forces.cpu().numpy(), atol=1e-10
+    )
+    filtered_fmax = np.linalg.norm(ase_cell_filter.get_forces(), axis=1).max()
+    assert filtered_fmax < force_tol, (
+        f"TorchSim stopped with ASE cell-filter fmax={filtered_fmax:.6f}, "
+        f"above force_tol={force_tol}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("init_fn", "init_kwargs", "expected"),
+    [
+        (ts.fire_init, {}, [False, True]),
+        (ts.fire_init, {"fire_flavor": "vv_fire"}, [True, True]),
+        (ts.bfgs_init, {}, [False, True]),
+        (ts.lbfgs_init, {}, [False, True]),
+        (ts.gradient_descent_init, {}, [True, True]),
+    ],
+)
+def test_generate_force_convergence_fn_force_space(
+    ar_double_sim_state: SimState,
+    lj_model: LennardJonesModel,
+    init_fn: Callable,
+    init_kwargs: dict[str, str],
+    expected: list[bool],
+) -> None:
+    state = init_fn(
+        ar_double_sim_state, lj_model, cell_filter=ts.CellFilter.unit, **init_kwargs
+    )
+    state.forces.zero_()
+    state.forces[:, 0] = 0.08
+    # Transformed forces become 0.16 and 0.04; Cartesian forces stay 0.08.
+    state.reference_cell[0] *= 0.5
+    state.reference_cell[1] *= 2.0
+    assert ts.generate_force_convergence_fn(force_tol=0.1)(state).tolist() == expected
+    cartesian_fn = ts.generate_force_convergence_fn(
+        force_tol=0.1, force_space="cartesian"
+    )
+    assert cartesian_fn(state).tolist() == [True, True]
+    convergence_fn = ts.generate_force_convergence_fn(
+        force_tol=0.1, force_space="deformation"
+    )
+    assert convergence_fn(state).tolist() == [False, True]
 
 
 def test_generate_force_convergence_fn_tolerance_ordering(

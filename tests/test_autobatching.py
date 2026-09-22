@@ -719,15 +719,7 @@ def test_in_flight_with_fire(
     batcher.load_states(fire_states)
 
     def convergence_fn(state: ts.FireState) -> torch.Tensor:
-        assert state.system_idx is not None
-        system_wise_max_force = torch.zeros(
-            state.n_systems, device=state.device, dtype=torch.float64
-        )
-        max_forces = state.forces.norm(dim=1)
-        system_wise_max_force = system_wise_max_force.scatter_reduce(
-            dim=0, index=state.system_idx, src=max_forces, reduce="amax"
-        )
-        return system_wise_max_force < 5e-1
+        return ts.system_wise_max_force(state) < 5e-1
 
     all_completed_states, convergence_tensor = [], None
     while True:
@@ -870,15 +862,7 @@ def test_in_flight_with_bfgs(
     batcher.load_states(bfgs_states)
 
     def convergence_fn(state: ts.BFGSState) -> torch.Tensor:
-        assert state.system_idx is not None
-        system_wise_max_force = torch.zeros(
-            state.n_systems, device=state.device, dtype=torch.float64
-        )
-        max_forces = state.forces.norm(dim=1)
-        system_wise_max_force = system_wise_max_force.scatter_reduce(
-            dim=0, index=state.system_idx, src=max_forces, reduce="amax"
-        )
-        return system_wise_max_force < 5e-1
+        return ts.system_wise_max_force(state) < 5e-1
 
     all_completed_states, convergence_tensor = [], None
     while True:
@@ -959,15 +943,7 @@ def test_in_flight_with_lbfgs(
     batcher.load_states(lbfgs_states)
 
     def convergence_fn(state: ts.LBFGSState) -> torch.Tensor:
-        assert state.system_idx is not None
-        system_wise_max_force = torch.zeros(
-            state.n_systems, device=state.device, dtype=torch.float64
-        )
-        max_forces = state.forces.norm(dim=1)
-        system_wise_max_force = system_wise_max_force.scatter_reduce(
-            dim=0, index=state.system_idx, src=max_forces, reduce="amax"
-        )
-        return system_wise_max_force < 5e-1
+        return ts.system_wise_max_force(state) < 5e-1
 
     all_completed_states, convergence_tensor = [], None
     while True:

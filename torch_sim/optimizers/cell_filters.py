@@ -433,6 +433,8 @@ class CellOptimState(OptimState, DeformGradMixin):
     hydrostatic_strain: bool = False
     constant_volume: bool = False
     frechet_method: str | None = None
+    # FIRE sets this from its flavor; BFGS and L-BFGS use deformation forces.
+    use_deform_grad_forces: bool = False
     cell_positions: torch.Tensor = field(default_factory=lambda: None)
     cell_forces: torch.Tensor = field(default_factory=lambda: None)
     cell_masses: torch.Tensor = field(default_factory=lambda: None)
@@ -450,6 +452,7 @@ class CellOptimState(OptimState, DeformGradMixin):
         "hydrostatic_strain",
         "constant_volume",
         "frechet_method",
+        "use_deform_grad_forces",
     }
 
     def deform_grad_forces(self) -> torch.Tensor:
@@ -467,6 +470,10 @@ class CellOptimState(OptimState, DeformGradMixin):
         return torch.bmm(
             self.forces.unsqueeze(1), self.deform_grad()[self.system_idx]
         ).squeeze(1)
+
+    def optimizer_forces(self) -> torch.Tensor:
+        """Return atomic forces in the coordinates used by the optimizer."""
+        return self.deform_grad_forces() if self.use_deform_grad_forces else self.forces
 
     def frac_positions(self) -> torch.Tensor:
         """Atomic positions in the reference cell frame, ``solve(deform_grad, r)``.
@@ -517,6 +524,7 @@ class CellBFGSState(CellOptimState, BFGSState):
     # Previous cell state for Hessian update
     prev_cell_positions: torch.Tensor = field(default_factory=lambda: None)
     prev_cell_forces: torch.Tensor = field(default_factory=lambda: None)
+    use_deform_grad_forces: bool = True
 
     _atom_attributes = (
         CellOptimState._atom_attributes  # noqa: SLF001
@@ -545,6 +553,7 @@ class CellLBFGSState(CellOptimState, LBFGSState):
     # Previous cell state for history update
     prev_cell_positions: torch.Tensor = field(default_factory=lambda: None)
     prev_cell_forces: torch.Tensor = field(default_factory=lambda: None)
+    use_deform_grad_forces: bool = True
 
     _atom_attributes = (
         CellOptimState._atom_attributes  # noqa: SLF001
