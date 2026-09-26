@@ -1,0 +1,238 @@
+{
+  "ase_fire/None": {
+    "ms_per_step": {
+      "before": [
+        16.99832957936451,
+        17.616417440585792,
+        16.516297289635986,
+        16.40773270977661,
+        16.211123468820006,
+        15.95166496001184,
+        16.1695678695105
+      ],
+      "after": [
+        16.192299178801477,
+        16.472323602065444,
+        15.550060330424458,
+        15.581610519438982,
+        15.652007299941033,
+        16.02674595080316,
+        15.931410829070956
+      ]
+    },
+    "median_ms": {
+      "before": 16.40773270977661,
+      "after": 15.931410829070956
+    },
+    "speedup": 1.0298982862105648,
+    "max_abs_difference": {
+      "positions": 4.76837158203125e-07,
+      "cell": 0.0,
+      "energy": 0.0,
+      "forces": 6.7259570641908795e-06,
+      "velocities": 2.480850525898859e-06,
+      "dt": 0.0,
+      "alpha": 0.0,
+      "n_pos": 0
+    },
+    "events_per_step": {
+      "before": {
+        "cudaStreamSynchronize": 58.0,
+        "aten::_unique2": 3.0,
+        "aten::item": 34.0,
+        "aten::_local_scalar_dense": 34.0,
+        "aten::is_nonzero": 11.0,
+        "aten::nonzero": 15.0,
+        "aten::unique_consecutive": 1.0,
+        "aten::nonzero_numpy": 1.0
+      },
+      "after": {
+        "cudaStreamSynchronize": 37.0,
+        "aten::unique_consecutive": 1.0,
+        "aten::item": 22.0,
+        "aten::_local_scalar_dense": 22.0,
+        "aten::is_nonzero": 6.0,
+        "aten::_unique2": 2.0,
+        "aten::nonzero": 5.0,
+        "aten::nonzero_numpy": 1.0
+      }
+    }
+  },
+  "ase_fire/unit": {
+    "ms_per_step": {
+      "before": [
+        20.439554331824183,
+        21.036556069739163,
+        20.287761939689517,
+        20.34772014943883,
+        20.647061348427087,
+        20.31434565084055,
+        20.33670808887109
+      ],
+      "after": [
+        19.921358090359718,
+        19.399418651591986,
+        19.907221409957856,
+        19.427112189587206,
+        19.782198627945036,
+        20.029721490573138,
+        19.68242796836421
+      ]
+    },
+    "median_ms": {
+      "before": 20.34772014943883,
+      "after": 19.782198627945036
+    },
+    "speedup": 1.0285873947648527,
+    "max_abs_difference": {
+      "positions": 2.384185791015625e-06,
+      "cell": 1.9073486328125e-06,
+      "energy": 1.52587890625e-05,
+      "forces": 1.316370617132634e-05,
+      "velocities": 7.1009708335623145e-06,
+      "dt": 0.0,
+      "alpha": 0.0,
+      "n_pos": 0
+    },
+    "events_per_step": {
+      "before": {
+        "cudaStreamSynchronize": 70.0,
+        "aten::_unique2": 7.0,
+        "aten::item": 46.0,
+        "aten::_local_scalar_dense": 46.0,
+        "aten::is_nonzero": 11.0,
+        "aten::nonzero": 15.0,
+        "aten::unique_consecutive": 1.0,
+        "aten::nonzero_numpy": 1.0
+      },
+      "after": {
+        "cudaStreamSynchronize": 46.0,
+        "aten::item": 31.0,
+        "aten::_local_scalar_dense": 31.0,
+        "aten::unique_consecutive": 1.0,
+        "aten::is_nonzero": 6.0,
+        "aten::_unique2": 3.0,
+        "aten::nonzero": 5.0,
+        "aten::nonzero_numpy": 1.0
+      }
+    }
+  },
+  "ase_fire/frechet": {
+    "ms_per_step": {
+      "before": [
+        28.573016670998186,
+        28.900007950142026,
+        28.73944116057828,
+        28.70758033823222,
+        28.910031409468502,
+        28.52517928928137,
+        28.87855633860454
+      ],
+      "after": [
+        28.240457200445235,
+        27.779868808574975,
+        28.14855908975005,
+        27.881646768655628,
+        27.95145485084504,
+        28.025559401139617,
+        27.785049581434578
+      ]
+    },
+    "median_ms": {
+      "before": 28.73944116057828,
+      "after": 27.95145485084504
+    },
+    "speedup": 1.0281912449258226,
+    "max_abs_difference": {
+      "positions": 4.291534423828125e-06,
+      "cell": 4.291534423828125e-06,
+      "energy": 1.52587890625e-05,
+      "forces": 1.3757386113866232e-05,
+      "velocities": 7.85175507189706e-06,
+      "dt": 0.0,
+      "alpha": 0.0,
+      "n_pos": 0
+    },
+    "events_per_step": {
+      "before": {
+        "cudaStreamSynchronize": 421.0,
+        "aten::_unique2": 6.0,
+        "aten::item": 78.0,
+        "aten::_local_scalar_dense": 78.0,
+        "aten::is_nonzero": 36.0,
+        "aten::nonzero": 17.0,
+        "aten::unique_consecutive": 2.0,
+        "aten::nonzero_numpy": 3.0
+      },
+      "after": {
+        "cudaStreamSynchronize": 398.0,
+        "aten::item": 64.0,
+        "aten::_local_scalar_dense": 64.0,
+        "aten::is_nonzero": 31.0,
+        "aten::unique_consecutive": 2.0,
+        "aten::nonzero_numpy": 3.0,
+        "aten::nonzero": 7.0,
+        "aten::_unique2": 3.0
+      }
+    }
+  },
+  "vv_fire/None": {
+    "ms_per_step": {
+      "before": [
+        18.29767577117309,
+        18.637424958869815,
+        18.085916498675942,
+        18.223622599616647,
+        18.17664427915588,
+        18.12194623053074,
+        18.370355360675603
+      ],
+      "after": [
+        17.85239945165813,
+        17.538357691373676,
+        17.580351640935987,
+        17.822299250401556,
+        17.84973219037056,
+        17.59278996149078,
+        17.528350681532174
+      ]
+    },
+    "median_ms": {
+      "before": 18.223622599616647,
+      "after": 17.59278996149078
+    },
+    "speedup": 1.0358574529399094,
+    "max_abs_difference": {
+      "positions": 9.5367431640625e-07,
+      "cell": 0.0,
+      "energy": 1.52587890625e-05,
+      "forces": 4.114805051358417e-06,
+      "velocities": 1.5299292499548756e-07,
+      "dt": 0.0,
+      "alpha": 0.0,
+      "n_pos": 0
+    },
+    "events_per_step": {
+      "before": {
+        "cudaStreamSynchronize": 56.0,
+        "aten::_unique2": 3.0,
+        "aten::item": 32.0,
+        "aten::_local_scalar_dense": 32.0,
+        "aten::is_nonzero": 10.0,
+        "aten::unique_consecutive": 1.0,
+        "aten::nonzero": 15.0,
+        "aten::nonzero_numpy": 1.0
+      },
+      "after": {
+        "cudaStreamSynchronize": 37.0,
+        "aten::unique_consecutive": 1.0,
+        "aten::item": 22.0,
+        "aten::_local_scalar_dense": 22.0,
+        "aten::is_nonzero": 6.0,
+        "aten::_unique2": 2.0,
+        "aten::nonzero": 5.0,
+        "aten::nonzero_numpy": 1.0
+      }
+    }
+  }
+}

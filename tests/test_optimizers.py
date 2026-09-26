@@ -1562,3 +1562,87 @@ def test_lbfgs_prev_cell_positions_stored_before_step(lj_model: ModelInterface) 
         "prev_positions should be fractional coords in the adjusted cell frame. "
         f"max diff = {(opt_state.prev_positions - expected_prev).abs().max():.2e}"
     )
+
+
+@pytest.mark.parametrize("fire_flavor", get_args(FireFlavor))
+@pytest.mark.parametrize("velocity_state", ["initial", "running", "mixed"])
+def test_fire_no_scalar_extraction_or_boolean_indexing(
+    ar_double_sim_state, lj_model, monkeypatch, fire_flavor, velocity_state
+):
+    """Keep scalar reads and dynamically sized boolean indexing out of FIRE.
+
+    Use fixed model outputs so this checks the optimizer independently of the
+    model's neighbor list and force evaluation. Dispatch catches CUDA sync-causing
+    operations on CPU too, so the regression runs without a GPU.
+    """
+    from torch.utils._python_dispatch import TorchDispatchMode
+
+    state = ts.fire_init(ar_double_sim_state, lj_model)
+    if velocity_state != "initial":
+        state.velocities = state.forces.clone()
+        if velocity_state == "mixed":
+            state.velocities[state.system_idx == 1] = torch.nan
+    output = {
+        "energy": state.energy.clone(),
+        "forces": state.forces.clone(),
+        "stress": state.stress.clone(),
+    }
+    monkeypatch.setattr(lj_model, "forward", lambda _state: output)
+
+    class RejectScalarReads(TorchDispatchMode):
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None) -> Any:
+            assert func not in (
+                torch.ops.aten._local_scalar_dense.default,  # noqa: SLF001
+                torch.ops.aten.nonzero.default,
+            ), f"FIRE used a synchronizing operation: {func}"
+            return func(*args, **(kwargs or {}))
+
+    with RejectScalarReads():
+        ts.fire_step(state, lj_model, fire_flavor=fire_flavor)
+
+
+def test_fire_first_step_preserves_parameters(ar_double_sim_state, lj_model):
+    """The initial all-NaN batch accelerates without resetting FIRE parameters."""
+    state = ts.fire_init(ar_double_sim_state, lj_model, dt_start=0.03)
+    state.alpha[:] = 0.23
+    state.n_pos[:] = 7
+    positions = state.positions.clone()
+    forces = state.forces.clone()
+    dt, alpha, n_pos = state.dt.clone(), state.alpha.clone(), state.n_pos.clone()
+    ts.fire_step(state, lj_model, max_step=100)
+    torch.testing.assert_close(state.dt, dt)
+    torch.testing.assert_close(state.alpha, alpha)
+    torch.testing.assert_close(state.n_pos, n_pos)
+    torch.testing.assert_close(state.velocities, forces * dt[state.system_idx, None])
+    torch.testing.assert_close(
+        state.positions, positions + forces * dt[state.system_idx, None].square()
+    )
+
+
+@pytest.mark.parametrize("fire_flavor", get_args(FireFlavor))
+def test_fire_mixed_power_update_order(
+    ar_double_sim_state, lj_model, monkeypatch, fire_flavor
+):
+    """ASE tests n_min before incrementing; VV tests it after incrementing."""
+    state = ts.fire_init(ar_double_sim_state, lj_model, alpha_start=0.3)
+    state.forces = torch.ones_like(state.forces)
+    state.masses = torch.ones_like(state.masses)
+    state.velocities = torch.where(
+        (state.system_idx == 0).unsqueeze(-1), state.forces, -state.forces
+    )
+    state.n_pos[:] = 5
+    output = {
+        "energy": state.energy.clone(),
+        "forces": state.forces.clone(),
+        "stress": state.stress.clone(),
+    }
+    monkeypatch.setattr(lj_model, "forward", lambda _state: output)
+    ts.fire_step(state, lj_model, fire_flavor=fire_flavor)
+    inc = fire_flavor == "vv_fire"
+    torch.testing.assert_close(
+        state.dt, state.dt.new_tensor([0.11 if inc else 0.1, 0.05])
+    )
+    torch.testing.assert_close(
+        state.alpha, state.alpha.new_tensor([0.297 if inc else 0.3, 0.1])
+    )
+    torch.testing.assert_close(state.n_pos, state.n_pos.new_tensor([6, 0]))

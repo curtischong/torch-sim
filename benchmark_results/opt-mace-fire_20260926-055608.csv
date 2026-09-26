@@ -1,0 +1,2 @@
+model,dataset,repeats,warmup_steps,times_s,optimizer,cell_filter,dtype,device,n_structures_requested,seed,max_steps,f_max,load_s,n_atoms_mean,n_atoms_max,ts_n_relaxed,ts_n_converged,ts_converged_pct,ts_total_s,ts_s_per_structure,ts_structures_per_min,speedup_vs_ase
+mace,copper,5,10,"[6.371, 5.37, 5.413, 5.341, 5.359]",fire,none,float32,cuda,8,0,100,0.05,2.951,32.0,32,8,8,100.0,5.37,0.6712,89.39,

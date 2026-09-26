@@ -1,0 +1,90 @@
+{
+  "ase_fire/None": {
+    "ms_per_step": [
+      16.354465978220105,
+      16.026522379834205,
+      15.743990670889616,
+      16.294926421251148,
+      16.010495701339096,
+      16.04583335807547,
+      16.41694196034223
+    ],
+    "median_ms": 16.04583335807547,
+    "events_per_step": {
+      "cudaStreamSynchronize": 58.0,
+      "aten::_unique2": 3.0,
+      "aten::item": 34.0,
+      "aten::_local_scalar_dense": 34.0,
+      "aten::is_nonzero": 11.0,
+      "aten::nonzero": 15.0,
+      "aten::unique_consecutive": 1.0,
+      "aten::nonzero_numpy": 1.0
+    }
+  },
+  "ase_fire/unit": {
+    "ms_per_step": [
+      20.41611938038841,
+      20.310860369354486,
+      20.2625274611637,
+      20.213015279732645,
+      20.70140739204362,
+      20.442662499845028,
+      20.67805903032422
+    ],
+    "median_ms": 20.41611938038841,
+    "events_per_step": {
+      "cudaStreamSynchronize": 70.0,
+      "aten::_unique2": 7.0,
+      "aten::item": 46.0,
+      "aten::_local_scalar_dense": 46.0,
+      "aten::is_nonzero": 11.0,
+      "aten::nonzero": 15.0,
+      "aten::unique_consecutive": 1.0,
+      "aten::nonzero_numpy": 1.0
+    }
+  },
+  "ase_fire/frechet": {
+    "ms_per_step": [
+      29.415672549512237,
+      28.55565638979897,
+      28.481082499492913,
+      28.158479859121144,
+      28.29113437095657,
+      28.38972863042727,
+      29.075035450514406
+    ],
+    "median_ms": 28.481082499492913,
+    "events_per_step": {
+      "cudaStreamSynchronize": 421.0,
+      "aten::_unique2": 6.0,
+      "aten::item": 78.0,
+      "aten::_local_scalar_dense": 78.0,
+      "aten::is_nonzero": 36.0,
+      "aten::nonzero": 17.0,
+      "aten::unique_consecutive": 2.0,
+      "aten::nonzero_numpy": 3.0
+    }
+  },
+  "vv_fire/None": {
+    "ms_per_step": [
+      18.075150470249355,
+      17.972956281155348,
+      18.341438008937985,
+      18.132892579305917,
+      18.049537860788405,
+      18.412316038738936,
+      17.9465976706706
+    ],
+    "median_ms": 18.075150470249355,
+    "events_per_step": {
+      "cudaStreamSynchronize": 56.0,
+      "aten::_unique2": 3.0,
+      "aten::item": 32.0,
+      "aten::_local_scalar_dense": 32.0,
+      "aten::is_nonzero": 10.0,
+      "aten::unique_consecutive": 1.0,
+      "aten::nonzero": 15.0,
+      "aten::nonzero_numpy": 1.0
+    }
+  }
+}
