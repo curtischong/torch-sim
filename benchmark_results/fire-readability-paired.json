@@ -1,0 +1,160 @@
+{
+  "comparison": "Only _ase_fire_step is replaced; all other code is shared.",
+  "runs": {
+    "old_ase_step": [
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.779,
+        "s_per_structure": 0.5973,
+        "structures_per_min": 100.45
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.62,
+        "s_per_structure": 0.5775,
+        "structures_per_min": 103.9
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.54,
+        "s_per_structure": 0.5675,
+        "structures_per_min": 105.73
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.592,
+        "s_per_structure": 0.574,
+        "structures_per_min": 104.53
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.569,
+        "s_per_structure": 0.5711,
+        "structures_per_min": 105.06
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.583,
+        "s_per_structure": 0.5729,
+        "structures_per_min": 104.73
+      }
+    ],
+    "current_ase_step": [
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.496,
+        "s_per_structure": 0.562,
+        "structures_per_min": 106.77
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.537,
+        "s_per_structure": 0.5671,
+        "structures_per_min": 105.8
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.607,
+        "s_per_structure": 0.5758,
+        "structures_per_min": 104.2
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.397,
+        "s_per_structure": 0.5496,
+        "structures_per_min": 109.17
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.404,
+        "s_per_structure": 0.5506,
+        "structures_per_min": 108.98
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.407,
+        "s_per_structure": 0.5509,
+        "structures_per_min": 108.91
+      }
+    ],
+    "refactored_ase_step": [
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.467,
+        "s_per_structure": 0.5584,
+        "structures_per_min": 107.45
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.5,
+        "s_per_structure": 0.5625,
+        "structures_per_min": 106.66
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.505,
+        "s_per_structure": 0.5631,
+        "structures_per_min": 106.55
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.45,
+        "s_per_structure": 0.5563,
+        "structures_per_min": 107.86
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.432,
+        "s_per_structure": 0.554,
+        "structures_per_min": 108.31
+      },
+      {
+        "n_relaxed": 8,
+        "n_converged": 8,
+        "converged_pct": 100.0,
+        "total_s": 4.419,
+        "s_per_structure": 0.5524,
+        "structures_per_min": 108.62
+      }
+    ]
+  },
+  "median_s": {
+    "old_ase_step": 4.5875,
+    "current_ase_step": 4.4515,
+    "refactored_ase_step": 4.4585
+  }
+}

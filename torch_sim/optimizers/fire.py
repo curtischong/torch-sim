@@ -285,7 +285,7 @@ def _vv_fire_step[T: "FireState | CellFireState"](
     return state
 
 
-def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
+def _ase_fire_step[T: "FireState | CellFireState"](
     state: T,
     model: "ModelInterface",
     *,
@@ -299,8 +299,6 @@ def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
     eps: float,
 ) -> T:
     """Perform one ASE-style FIRE optimization step."""
-    from torch_sim.optimizers import CellFireState
-
     n_systems = state.dt.numel()
 
     # Per-atom NaN detection before zeroing: needed to decide whether to skip
@@ -316,11 +314,9 @@ def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
 
     # Only cell states have a reference cell to define deform_grad; ASE's cell
     # filters hand FIRE `forces @ deform_grad`, a plain FireState uses raw forces.
-    forces = (
-        torch.where(first_step, state.forces, state.deform_grad_forces())
-        if isinstance(state, CellFireState)
-        else state.forces
-    )
+    forces = state.forces
+    if isinstance(state, CellFireState):
+        forces = torch.where(first_step, forces, state.deform_grad_forces())
 
     # Calculate power (newly zeroed systems will have power=0 → neg_mask)
     system_power = tsm.batched_vdot(
@@ -342,7 +338,69 @@ def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
     state.alpha = torch.where(neg_mask_system, alpha_start, state.alpha)
     state.n_pos = torch.where(neg_mask_system, 0, state.n_pos)
 
-    # Velocity mixing BEFORE acceleration (ASE ordering)
+    # ASE mixes velocities before the forward-Euler acceleration.
+    _ase_fire_mix_velocities(state, forces, pos_mask_system, first_step, eps)
+
+    # Acceleration (single forward-Euler, no mass for ASE FIRE)
+    state.velocities += forces * state.dt[state.system_idx].unsqueeze(-1)
+    dr_atom = state.velocities * state.dt[state.system_idx].unsqueeze(-1)
+    dr_scaling_system = tsm.batched_vdot(
+        dr_atom, dr_atom, state.system_idx, n_systems=n_systems
+    )
+
+    if isinstance(state, CellFireState):
+        state.cell_velocities += state.cell_forces * state.dt.view(n_systems, 1, 1)
+        dr_cell = state.cell_velocities * state.dt.view(n_systems, 1, 1)
+
+        dr_scaling_system += dr_cell.pow(2).sum(dim=(1, 2))
+        dr_scaling_cell = torch.sqrt(dr_scaling_system).view(n_systems, 1, 1)
+        dr_cell = torch.where(
+            dr_scaling_cell > max_step,
+            max_step * dr_cell / (dr_scaling_cell + eps),
+            dr_cell,
+        )
+
+    dr_scaling_atom = torch.sqrt(dr_scaling_system)[state.system_idx].unsqueeze(-1)
+    dr_atom = torch.where(
+        dr_scaling_atom > max_step,
+        max_step * dr_atom / (dr_scaling_atom + eps),
+        dr_atom,
+    )
+
+    # Position updates
+    if isinstance(state, CellFireState):
+        _ase_fire_update_cell(state, dr_atom, dr_cell)
+    else:
+        state.set_constrained_positions(state.positions + dr_atom)
+
+    # Get new forces, energy, and stress
+    model_output = model(state)
+    state.set_constrained_forces(model_output["forces"])
+    state.energy = model_output["energy"]
+    if "stress" in model_output:
+        state.stress = model_output["stress"]
+    state.store_model_extras(model_output)
+
+    # Update cell forces
+    if isinstance(state, CellFireState):
+        cell_filters.compute_cell_forces(model_output, state)
+
+    return state
+
+
+def _ase_fire_mix_velocities(
+    state: "FireState | CellFireState",
+    forces: torch.Tensor,
+    pos_mask_system: torch.Tensor,
+    first_step: torch.Tensor,
+    eps: float,
+) -> None:
+    """Align velocities with forces at positive power; reset at nonpositive power.
+
+    Atomic and cell degrees of freedom share a per-system norm. The initial
+    all-NaN batch keeps its zeroed velocities and skips mixing.
+    """
+    n_systems = state.dt.numel()
     v_scaling_system = tsm.batched_vdot(
         state.velocities, state.velocities, state.system_idx, n_systems=n_systems
     )
@@ -380,102 +438,62 @@ def _ase_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
     )
     state.velocities = torch.where(first_step, state.velocities, mixed_velocities)
 
-    # Acceleration (single forward-Euler, no mass for ASE FIRE)
-    state.velocities += forces * state.dt[state.system_idx].unsqueeze(-1)
-    dr_atom = state.velocities * state.dt[state.system_idx].unsqueeze(-1)
-    dr_scaling_system = tsm.batched_vdot(
-        dr_atom, dr_atom, state.system_idx, n_systems=n_systems
-    )
 
-    if isinstance(state, CellFireState):
-        state.cell_velocities += state.cell_forces * state.dt.view(n_systems, 1, 1)
-        dr_cell = state.cell_velocities * state.dt.view(n_systems, 1, 1)
+def _ase_fire_update_cell(
+    state: CellFireState, dr_atom: torch.Tensor, dr_cell: torch.Tensor
+) -> None:
+    """Apply displacements in filter coordinates, then enforce cell constraints."""
+    n_systems = state.dt.numel()
+    # Save positions in the old cell frame before updating the cell.
+    new_frac_positions = state.frac_positions() + dr_atom
 
-        dr_scaling_system += dr_cell.pow(2).sum(dim=(1, 2))
-        dr_scaling_cell = torch.sqrt(dr_scaling_system).view(n_systems, 1, 1)
-        dr_cell = torch.where(
-            dr_scaling_cell > max_step,
-            max_step * dr_cell / (dr_scaling_cell + eps),
-            dr_cell,
-        )
+    # Update cell positions directly based on stored cell filter type
+    if hasattr(state, "cell_filter") and state.cell_filter is not None:
+        from torch_sim.optimizers.cell_filters import frechet_cell_filter_init
 
-    dr_scaling_atom = torch.sqrt(dr_scaling_system)[state.system_idx].unsqueeze(-1)
-    dr_atom = torch.where(
-        dr_scaling_atom > max_step,
-        max_step * dr_atom / (dr_scaling_atom + eps),
-        dr_atom,
-    )
+        init_fn, _step_fn = state.cell_filter
+        is_frechet = init_fn is frechet_cell_filter_init
 
-    # Position updates
-    if isinstance(state, CellFireState):
-        # For cell optimization, handle both atomic and cell position updates
-        # This follows the ASE FIRE implementation pattern
-        # Store fractional positions (will transform to Cartesian after cell update)
-        new_frac_positions = state.frac_positions() + dr_atom
+        # Update cell positions
+        cell_positions_new = state.cell_positions + dr_cell
+        state.cell_positions = cell_positions_new
 
-        # Update cell positions directly based on stored cell filter type
-        if hasattr(state, "cell_filter") and state.cell_filter is not None:
-            from torch_sim.optimizers.cell_filters import frechet_cell_filter_init
-
-            init_fn, _step_fn = state.cell_filter
-            is_frechet = init_fn is frechet_cell_filter_init
-
-            # Update cell positions
-            cell_positions_new = state.cell_positions + dr_cell
+        if is_frechet:  # Frechet: convert from log space to deformation gradient
+            cell_factor_reshaped = state.cell_factor.view(n_systems, 1, 1)
+            deform_grad_log_new = cell_positions_new / cell_factor_reshaped
+            deform_grad_log_new, cell_positions_new = _clamp_deform_grad_log(
+                deform_grad_log_new, cell_positions_new, cell_factor_reshaped
+            )
             state.cell_positions = cell_positions_new
+            deform_grad_new = torch.matrix_exp(deform_grad_log_new)
+        else:  # Unit cell: positions are scaled deformation gradient
+            cell_factor_expanded = state.cell_factor.expand(n_systems, 3, 1)
+            deform_grad_new = cell_positions_new / cell_factor_expanded
 
-            if is_frechet:  # Frechet: convert from log space to deformation gradient
-                cell_factor_reshaped = state.cell_factor.view(n_systems, 1, 1)
-                deform_grad_log_new = cell_positions_new / cell_factor_reshaped
-                deform_grad_log_new, cell_positions_new = _clamp_deform_grad_log(
-                    deform_grad_log_new, cell_positions_new, cell_factor_reshaped
-                )
-                state.cell_positions = cell_positions_new
-                deform_grad_new = torch.matrix_exp(deform_grad_log_new)
-            else:  # Unit cell: positions are scaled deformation gradient
-                cell_factor_expanded = state.cell_factor.expand(n_systems, 3, 1)
-                deform_grad_new = cell_positions_new / cell_factor_expanded
+        # Compute new cell from deformation gradient
+        new_col_vector_cell = torch.bmm(deform_grad_new, state.reference_cell)
 
-            # Compute new cell from deformation gradient
-            new_col_vector_cell = torch.bmm(deform_grad_new, state.reference_cell)
+        # Apply cell constraints and scale positions to new cell coordinates
+        # (needed for correct displacement calculation in position constraints)
+        state.set_constrained_cell(new_col_vector_cell, scale_atoms=True)
 
-            # Apply cell constraints and scale positions to new cell coordinates
-            # (needed for correct displacement calculation in position constraints)
-            state.set_constrained_cell(new_col_vector_cell, scale_atoms=True)
+        # Resync cell_positions to match the (possibly adjusted) cell so
+        # the next step builds on the correct base instead of the
+        # pre-adjustment value.  Without this, any constraint that
+        # modifies the cell (e.g. FixSymmetry) causes a zigzag where the
+        # optimizer repeatedly proposes from a stale cell_positions.
+        adjusted_deform_grad = state.deform_grad()
+        if is_frechet:
+            cell_factor_reshaped = state.cell_factor.view(n_systems, 1, 1)
+            state.cell_positions = (
+                tsm.matrix_log_33(adjusted_deform_grad, sim_dtype=state.dtype)
+                * cell_factor_reshaped
+            )
+        else:
+            cell_factor_expanded = state.cell_factor.expand(n_systems, 3, 1)
+            state.cell_positions = (
+                adjusted_deform_grad.reshape(n_systems, 3, 3) * cell_factor_expanded
+            )
 
-            # Resync cell_positions to match the (possibly adjusted) cell so
-            # the next step builds on the correct base instead of the
-            # pre-adjustment value.  Without this, any constraint that
-            # modifies the cell (e.g. FixSymmetry) causes a zigzag where the
-            # optimizer repeatedly proposes from a stale cell_positions.
-            adjusted_deform_grad = state.deform_grad()
-            if is_frechet:
-                cell_factor_reshaped = state.cell_factor.view(n_systems, 1, 1)
-                state.cell_positions = (
-                    tsm.matrix_log_33(adjusted_deform_grad, sim_dtype=state.dtype)
-                    * cell_factor_reshaped
-                )
-            else:
-                cell_factor_expanded = state.cell_factor.expand(n_systems, 3, 1)
-                state.cell_positions = (
-                    adjusted_deform_grad.reshape(n_systems, 3, 3) * cell_factor_expanded
-                )
-
-        # Transform fractional positions to Cartesian using NEW deformation gradient
-        state.set_constrained_positions(state.positions_from_frac(new_frac_positions))
-    else:
-        state.set_constrained_positions(state.positions + dr_atom)
-
-    # Get new forces, energy, and stress
-    model_output = model(state)
-    state.set_constrained_forces(model_output["forces"])
-    state.energy = model_output["energy"]
-    if "stress" in model_output:
-        state.stress = model_output["stress"]
-    state.store_model_extras(model_output)
-
-    # Update cell forces
-    if isinstance(state, CellFireState):
-        cell_filters.compute_cell_forces(model_output, state)
-
-    return state
+    # Transform fractional positions to Cartesian using NEW deformation gradient
+    state.set_constrained_positions(state.positions_from_frac(new_frac_positions))
