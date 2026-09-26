@@ -597,126 +597,6 @@ def test_optimizer_invalid_fire_flavor(
         )
 
 
-def test_fire_ase_negative_power_branch(
-    ar_supercell_sim_state: SimState, lj_model: ModelInterface
-) -> None:
-    """Test that the ASE FIRE P<0 branch behaves as expected."""
-    f_dec = 0.5  # Default from fire optimizer
-    alpha_start = 0.1  # Default from fire optimizer
-    dt_start_val = 0.1
-
-    state = ts.fire_init(
-        state=ar_supercell_sim_state,
-        model=lj_model,
-        fire_flavor="ase_fire",
-        alpha_start=alpha_start,
-        dt_start=dt_start_val,
-    )
-
-    # Save parameters from initial state
-    initial_dt_batch = state.dt.clone()  # per-system dt
-
-    # Manipulate state to ensure P < 0 for the step_fn
-    # Ensure forces are non-trivial
-    state.forces += torch.sign(state.forces + 1e-6) * 1e-2
-    state.forces[torch.abs(state.forces) < 1e-3] = 1e-3
-    # Set velocities directly opposite to current forces
-    state.velocities = -state.forces * 0.1  # v = -k * F
-
-    # Store forces that will be used in the power calculation and v += dt*F step
-    forces_at_power_calc = state.forces.clone()
-
-    # Deepcopy state as step_fn modifies it in-place
-    state_to_update = copy.deepcopy(state)
-    updated_state = ts.fire_step(
-        state=state_to_update,
-        model=lj_model,
-        f_dec=f_dec,
-        dt_max=1.0,
-        max_step=10.0,  # Large max_step to not interfere with velocity check
-    )
-
-    # Assertions for P < 0 branch being taken
-    # Check for a single-batch state (ar_supercell_sim_state is single batch)
-    expected_dt_val = initial_dt_batch[0] * f_dec
-    assert torch.allclose(updated_state.dt[0], expected_dt_val)
-    assert torch.allclose(
-        updated_state.alpha[0],
-        torch.tensor(
-            alpha_start,
-            dtype=updated_state.alpha.dtype,
-            device=updated_state.alpha.device,
-        ),
-    )
-    assert updated_state.n_pos[0] == 0
-
-    # Assertions for velocity update in ASE P < 0 case:
-    # v_after_mixing_is_0, then v_final = dt_new * F_at_power_calc
-    expected_final_velocities = (
-        expected_dt_val * forces_at_power_calc[updated_state.system_idx == 0]
-    )
-    assert torch.allclose(
-        updated_state.velocities[updated_state.system_idx == 0],
-        expected_final_velocities,
-        atol=1e-6,
-    )
-
-
-def test_fire_vv_negative_power_branch(
-    ar_supercell_sim_state: SimState, lj_model: ModelInterface
-) -> None:
-    """Attempt to trigger and test the VV FIRE P<0 branch."""
-    f_dec = 0.5
-    alpha_start = 0.1
-    # Use a very large dt_start to encourage overshooting and P<0 inside _vv_fire_step
-    dt_start_val = 2.0
-    dt_max_val = 2.0
-
-    state = ts.fire_init(
-        state=ar_supercell_sim_state,
-        model=lj_model,
-        fire_flavor="vv_fire",
-        alpha_start=alpha_start,
-        dt_start=dt_start_val,
-    )
-
-    initial_dt_batch = state.dt.clone()
-    initial_alpha_batch = state.alpha.clone()  # Already alpha_start
-
-    state_to_update = copy.deepcopy(state)
-    updated_state = ts.fire_step(
-        state=state_to_update,
-        model=lj_model,
-        f_dec=f_dec,
-        dt_max=dt_max_val,
-        n_min=0,  # Allow dt to change immediately
-    )
-
-    # Check if the P<0 branch was likely hit (params changed accordingly for batch 0)
-    expected_dt_val = initial_dt_batch[0] * f_dec
-    expected_alpha_val = torch.tensor(
-        alpha_start,
-        dtype=initial_alpha_batch.dtype,
-        device=initial_alpha_batch.device,
-    )
-
-    p_lt_0_branch_taken = (
-        torch.allclose(updated_state.dt[0], expected_dt_val)
-        and torch.allclose(updated_state.alpha[0], expected_alpha_val)
-        and updated_state.n_pos[0] == 0
-    )
-
-    if not p_lt_0_branch_taken:
-        return
-
-    # If P<0 branch was taken, velocities should be zeroed
-    assert torch.allclose(
-        updated_state.velocities[updated_state.system_idx == 0],
-        torch.zeros_like(updated_state.velocities[updated_state.system_idx == 0]),
-        atol=1e-7,
-    )
-
-
 @pytest.mark.parametrize("fire_flavor", get_args(FireFlavor))
 @pytest.mark.parametrize("cell_filter", [None, ts.CellFilter.unit, ts.CellFilter.frechet])
 def test_fire_nan_velocities_dont_affect_other_systems(
@@ -1569,12 +1449,7 @@ def test_lbfgs_prev_cell_positions_stored_before_step(lj_model: ModelInterface) 
 def test_fire_no_scalar_extraction_or_boolean_indexing(
     ar_double_sim_state, lj_model, monkeypatch, fire_flavor, velocity_state
 ):
-    """Keep scalar reads and dynamically sized boolean indexing out of FIRE.
-
-    Use fixed model outputs so this checks the optimizer independently of the
-    model's neighbor list and force evaluation. Dispatch catches CUDA sync-causing
-    operations on CPU too, so the regression runs without a GPU.
-    """
+    """Catch CUDA-syncing operations in FIRE, even when running on CPU."""
     from torch.utils._python_dispatch import TorchDispatchMode
 
     state = ts.fire_init(ar_double_sim_state, lj_model)
@@ -1582,11 +1457,8 @@ def test_fire_no_scalar_extraction_or_boolean_indexing(
         state.velocities = state.forces.clone()
         if velocity_state == "mixed":
             state.velocities[state.system_idx == 1] = torch.nan
-    output = {
-        "energy": state.energy.clone(),
-        "forces": state.forces.clone(),
-        "stress": state.stress.clone(),
-    }
+    # Exclude neighbor-list and model operations from the dispatch check.
+    output = {key: getattr(state, key).clone() for key in ("energy", "forces", "stress")}
     monkeypatch.setattr(lj_model, "forward", lambda _state: output)
 
     class RejectScalarReads(TorchDispatchMode):
@@ -1603,8 +1475,7 @@ def test_fire_no_scalar_extraction_or_boolean_indexing(
 
 def test_fire_first_step_preserves_parameters(ar_double_sim_state, lj_model):
     """The initial all-NaN batch accelerates without resetting FIRE parameters."""
-    state = ts.fire_init(ar_double_sim_state, lj_model, dt_start=0.03)
-    state.alpha[:] = 0.23
+    state = ts.fire_init(ar_double_sim_state, lj_model, dt_start=0.03, alpha_start=0.23)
     state.n_pos[:] = 7
     positions = state.positions.clone()
     forces = state.forces.clone()
@@ -1623,7 +1494,7 @@ def test_fire_first_step_preserves_parameters(ar_double_sim_state, lj_model):
 def test_fire_mixed_power_update_order(
     ar_double_sim_state, lj_model, monkeypatch, fire_flavor
 ):
-    """ASE tests n_min before incrementing; VV tests it after incrementing."""
+    """Check the n_min boundary and negative-power reset for both FIRE flavors."""
     state = ts.fire_init(ar_double_sim_state, lj_model, alpha_start=0.3)
     state.forces = torch.ones_like(state.forces)
     state.masses = torch.ones_like(state.masses)
@@ -1631,18 +1502,20 @@ def test_fire_mixed_power_update_order(
         (state.system_idx == 0).unsqueeze(-1), state.forces, -state.forces
     )
     state.n_pos[:] = 5
-    output = {
-        "energy": state.energy.clone(),
-        "forces": state.forces.clone(),
-        "stress": state.stress.clone(),
-    }
+    output = {key: getattr(state, key).clone() for key in ("energy", "forces", "stress")}
     monkeypatch.setattr(lj_model, "forward", lambda _state: output)
     ts.fire_step(state, lj_model, fire_flavor=fire_flavor)
-    inc = fire_flavor == "vv_fire"
+    # ASE tests n_min before incrementing; VV tests it after incrementing.
+    is_vv = fire_flavor == "vv_fire"
     torch.testing.assert_close(
-        state.dt, state.dt.new_tensor([0.11 if inc else 0.1, 0.05])
+        state.dt, state.dt.new_tensor([0.11 if is_vv else 0.1, 0.05])
     )
     torch.testing.assert_close(
-        state.alpha, state.alpha.new_tensor([0.297 if inc else 0.3, 0.1])
+        state.alpha, state.alpha.new_tensor([0.297 if is_vv else 0.3, 0.1])
     )
     torch.testing.assert_close(state.n_pos, state.n_pos.new_tensor([6, 0]))
+    # ASE accelerates after the reset; VV leaves negative-power velocities zero.
+    negative_velocities = state.velocities[state.system_idx == 1]
+    torch.testing.assert_close(
+        negative_velocities, torch.full_like(negative_velocities, 0.0 if is_vv else 0.05)
+    )
