@@ -133,7 +133,9 @@ def test_fire_optimization(
     max_steps = 1000  # Add max step to prevent infinite loop
     steps_taken = 0
     while abs(energies[-2] - energies[-1]) > 1e-6 and steps_taken < max_steps:
-        state = ts.fire_step(state=state, model=lj_model, dt_max=0.3)
+        state = ts.fire_step(
+            state=state, model=lj_model, dt_max=0.3, fire_flavor=fire_flavor
+        )
         energies.append(state.energy.item())
         steps_taken += 1
 
@@ -687,6 +689,7 @@ def test_fire_vv_negative_power_branch(
     updated_state = ts.fire_step(
         state=state_to_update,
         model=lj_model,
+        fire_flavor="vv_fire",
         f_dec=f_dec,
         dt_max=dt_max_val,
         n_min=0,  # Allow dt to change immediately
@@ -747,7 +750,7 @@ def test_fire_nan_velocities_dont_affect_other_systems(
 
     # Evolve 10 steps so system 0 has non-trivial FIRE state (dt, alpha, n_pos)
     for _ in range(10):
-        state = ts.fire_step(state=state, model=lj_model)
+        state = ts.fire_step(state=state, model=lj_model, fire_flavor=fire_flavor)
 
     # Clone, then inject NaN into system 1 of one copy
     state_clean = copy.deepcopy(state)
@@ -759,8 +762,8 @@ def test_fire_nan_velocities_dont_affect_other_systems(
         state_mixed.cell_velocities[1] = float("nan")
 
     # One step each
-    state_clean = ts.fire_step(state=state_clean, model=lj_model)
-    state_mixed = ts.fire_step(state=state_mixed, model=lj_model)
+    state_clean = ts.fire_step(state=state_clean, model=lj_model, fire_flavor=fire_flavor)
+    state_mixed = ts.fire_step(state=state_mixed, model=lj_model, fire_flavor=fire_flavor)
 
     # System 0 must be identical regardless of system 1's NaN velocities
     sys0 = state_clean.system_idx == 0
@@ -828,7 +831,9 @@ def test_unit_cell_fire_optimization(
     steps_taken = 0
 
     while abs(energies[-2] - energies[-1]) > 1e-6 and steps_taken < max_steps:
-        state = ts.fire_step(state=state, model=lj_model, dt_max=0.3)
+        state = ts.fire_step(
+            state=state, model=lj_model, dt_max=0.3, fire_flavor=fire_flavor
+        )
         energies.append(state.energy.item())
         steps_taken += 1
 
@@ -1047,7 +1052,9 @@ def test_frechet_cell_fire_optimization(
     steps_taken = 0
 
     while abs(energies[-2] - energies[-1]) > 1e-6 and steps_taken < max_steps:
-        state = ts.fire_step(state=state, model=lj_model, dt_max=0.3)
+        state = ts.fire_step(
+            state=state, model=lj_model, dt_max=0.3, fire_flavor=fire_flavor
+        )
         energies.append(state.energy.item())
         steps_taken += 1
 

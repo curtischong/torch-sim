@@ -207,10 +207,20 @@ def _vv_fire_step[T: "FireState | CellFireState"](  # noqa: PLR0915
     atom_wise_dt = state.dt[state.system_idx].unsqueeze(-1)
     state.velocities += 0.5 * atom_wise_dt * state.forces / state.masses.unsqueeze(-1)
 
-    # Position update
-    state.set_constrained_positions(state.positions + atom_wise_dt * state.velocities)
-
-    # Cell position updates are handled in the velocity update step above
+    # Position update, including the first cell half-step before evaluating forces.
+    new_positions = state.positions + atom_wise_dt * state.velocities
+    if isinstance(state, CellFireState):
+        cell_wise_dt = state.dt.view(n_systems, 1, 1)
+        state.cell_velocities += (
+            0.5 * cell_wise_dt * state.cell_forces / state.cell_masses.unsqueeze(-1)
+        )
+        new_frac_positions = torch.linalg.solve(
+            state.deform_grad()[state.system_idx], new_positions.unsqueeze(-1)
+        ).squeeze(-1)
+        _, cell_step = state.cell_filter
+        cell_step(state, state.dt, direction=state.cell_velocities, scale_atoms=True)
+        new_positions = state.positions_from_frac(new_frac_positions)
+    state.set_constrained_positions(new_positions)
 
     # Get new forces and energy
     model_output = model(state)
