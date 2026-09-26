@@ -292,8 +292,14 @@ class CellFilter(StrEnum):
 
 
 # Filter type definitions for convenience
-def unit_cell_step[T: AnyCellState](state: T, cell_lr: float | torch.Tensor) -> None:
-    """Update cell using unit cell approach."""
+def unit_cell_step[T: AnyCellState](
+    state: T,
+    cell_lr: float | torch.Tensor,
+    *,
+    direction: torch.Tensor | None = None,
+    scale_atoms: bool = False,
+) -> None:
+    """Update cell using unit cell approach; direction defaults to cell forces."""
     cell_lr = torch.as_tensor(cell_lr, device=state.device, dtype=state.dtype)
     if cell_lr.ndim == 0:
         cell_lr = cell_lr.expand(state.n_systems)
@@ -309,7 +315,7 @@ def unit_cell_step[T: AnyCellState](state: T, cell_lr: float | torch.Tensor) -> 
 
     # Update cell positions
     cell_wise_lr = cell_lr.view(state.n_systems, 1, 1)
-    cell_step = cell_wise_lr * state.cell_forces
+    cell_step = cell_wise_lr * (state.cell_forces if direction is None else direction)
     cell_positions_new = current_cell_positions + cell_step
 
     # Update cell from new positions
@@ -317,19 +323,25 @@ def unit_cell_step[T: AnyCellState](state: T, cell_lr: float | torch.Tensor) -> 
     new_cell = torch.bmm(state.reference_cell.mT, cell_update.transpose(-2, -1))
 
     # Apply cell constraints (in-place, column vector convention)
-    state.set_constrained_cell(new_cell.mT.contiguous())
-    state.cell_positions = cell_positions_new
+    state.set_constrained_cell(new_cell.mT.contiguous(), scale_atoms=scale_atoms)
+    state.cell_positions = state.deform_grad() * cell_factor_expanded
 
 
-def frechet_cell_step[T: AnyCellState](state: T, cell_lr: float | torch.Tensor) -> None:
-    """Update cell using frechet approach."""
+def frechet_cell_step[T: AnyCellState](
+    state: T,
+    cell_lr: float | torch.Tensor,
+    *,
+    direction: torch.Tensor | None = None,
+    scale_atoms: bool = False,
+) -> None:
+    """Update cell using frechet approach; direction defaults to cell forces."""
     cell_lr = torch.as_tensor(cell_lr, device=state.device, dtype=state.dtype)
     if cell_lr.ndim == 0:
         cell_lr = cell_lr.expand(state.n_systems)
     cell_wise_lr = cell_lr.view(state.n_systems, 1, 1)
 
     # Compute cell step and update cell positions in log space
-    cell_step = cell_wise_lr * state.cell_forces
+    cell_step = cell_wise_lr * (state.cell_forces if direction is None else direction)
     cell_positions_new = state.cell_positions + cell_step
 
     # Convert from log space to deformation gradient
@@ -346,8 +358,13 @@ def frechet_cell_step[T: AnyCellState](state: T, cell_lr: float | torch.Tensor) 
     )
 
     # Apply cell constraints (in-place, column vector convention)
-    state.set_constrained_cell(new_row_vector_cell.mT.contiguous())
-    state.cell_positions = cell_positions_new
+    state.set_constrained_cell(
+        new_row_vector_cell.mT.contiguous(), scale_atoms=scale_atoms
+    )
+    state.cell_positions = (
+        tsm.matrix_log_33(state.deform_grad(), sim_dtype=state.dtype)
+        * cell_factor_reshaped
+    )
 
 
 def compute_cell_forces[T: AnyCellState](

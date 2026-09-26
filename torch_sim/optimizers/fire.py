@@ -176,7 +176,7 @@ def fire_step(
     return step_func(state, **step_func_kwargs)
 
 
-def _vv_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
+def _vv_fire_step[T: "FireState | CellFireState"](  # noqa: PLR0915
     state: T,
     model: "ModelInterface",
     *,
@@ -214,25 +214,11 @@ def _vv_fire_step[T: "FireState | CellFireState"](  # noqa: C901, PLR0915
         state.cell_velocities += (
             0.5 * cell_wise_dt * state.cell_forces / state.cell_masses.unsqueeze(-1)
         )
-        # Keep the atomic displacement in Cartesian coordinates, then carry it
-        # into the updated cell before applying position constraints.
         new_frac_positions = torch.linalg.solve(
             state.deform_grad()[state.system_idx], new_positions.unsqueeze(-1)
         ).squeeze(-1)
-        is_frechet = state.cell_filter[0] is cell_filters.frechet_cell_filter_init
-        state.cell_positions += cell_wise_dt * state.cell_velocities
-        deformation = state.cell_positions / state.cell_factor
-        if is_frechet:
-            deformation, state.cell_positions = _clamp_deform_grad_log(
-                deformation, state.cell_positions, state.cell_factor
-            )
-            deformation = torch.matrix_exp(deformation)
-        state.set_constrained_cell(deformation @ state.reference_cell, scale_atoms=True)
-        # Constraints may change the proposed cell; keep filter coordinates in sync.
-        deformation = state.deform_grad()
-        if is_frechet:
-            deformation = tsm.matrix_log_33(deformation, sim_dtype=state.dtype)
-        state.cell_positions = deformation * state.cell_factor
+        _, cell_step = state.cell_filter
+        cell_step(state, state.dt, direction=state.cell_velocities, scale_atoms=True)
         new_positions = state.positions_from_frac(new_frac_positions)
     state.set_constrained_positions(new_positions)
 
