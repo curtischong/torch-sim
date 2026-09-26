@@ -9,7 +9,7 @@
 #   "torch",
 # ]
 # ///
-"""Optimization throughput benchmark on WBM or small copper structures.
+"""Optimization throughput benchmark on WBM initial structures.
 
 Relaxes a random sample of WBM structures using torch-sim's LBFGS or FIRE
 optimizer with a batched MACE (or FairChem) model and reports throughput
@@ -20,10 +20,6 @@ Results are saved to benchmark_results/opt-<model>-<optimizer>-<timestamp>.csv.
 Example:
     uv run --with ".[mace]" examples/benchmarking/opt-throughput.py \
         --model mace --optimizer lbfgs --n-structures 50
-
-    python examples/benchmarking/opt-throughput.py --optimizer fire \
-        --dataset copper --n-structures 8 --dtype float32 --cell-filter none \
-        --max-steps 100 --repeats 5 --skip-ase
 """
 
 from __future__ import annotations
@@ -53,16 +49,6 @@ def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
         description="Optimization throughput benchmark on WBM structures."
-    )
-    parser.add_argument(
-        "--dataset",
-        choices=["wbm", "copper"],
-        default="wbm",
-        help="WBM structures or small rattled copper cells (no dataset download).",
-    )
-    parser.add_argument("--repeats", type=int, default=1, help="Timed repetitions.")
-    parser.add_argument(
-        "--warmup-steps", type=int, default=10, help="Untimed optimizer warmup steps."
     )
     parser.add_argument(
         "--model",
@@ -139,10 +125,7 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="Number of structures to relax with ASE (subset, since it is slow).",
     )
-    args = parser.parse_args()
-    if args.repeats < 1 or args.n_structures < 1 or args.warmup_steps < 0:
-        parser.error("repeats/n-structures must be positive; warmup-steps non-negative")
-    return args
+    return parser.parse_args()
 
 
 def clear_gpu_memory() -> None:
@@ -169,20 +152,6 @@ def _sample_wbm_structures(n_structures: int, seed: int) -> list[dict[str, Any]]
     sampled = [all_atoms[int(i)] for i in indices.tolist()]
     adaptor = AseAtomsAdaptor()
     return [adaptor.get_structure(a).as_dict() for a in sampled]
-
-
-def _copper_structures(n_structures: int, seed: int) -> list[dict[str, Any]]:
-    """Build reproducible 32-atom perturbed copper cells for small-model timing."""
-    from ase.build import bulk
-    from pymatgen.io.ase import AseAtomsAdaptor
-
-    rng = np.random.default_rng(seed)
-    structures = []
-    for _ in range(n_structures):
-        atoms = bulk("Cu", "fcc", a=3.61, cubic=True).repeat((2, 2, 2))
-        atoms.rattle(stdev=0.1, rng=rng)
-        structures.append(AseAtomsAdaptor.get_structure(atoms).as_dict())
-    return structures
 
 
 def _structures_to_sim_state(
@@ -266,9 +235,9 @@ def load_model(
             mace_mp,
         )
 
-        from torch_sim.models.mace import MaceModel
+        from torch_sim.models.mace import MaceModel, MaceUrls
 
-        path = model_path or "small"
+        path = model_path or MaceUrls.mace_mp_small
         local_path = download_mace_mp_checkpoint(path)
         model = MaceModel(model=local_path, device=device, dtype=dtype, enable_cueq=False)
         calculator = mace_mp(
@@ -310,8 +279,6 @@ def run_torchsim_optimization(
     if cell_filter_name != "none":
         init_kwargs["cell_filter"] = ts.CellFilter[cell_filter_name]
 
-    if model.device.type == "cuda":
-        torch.cuda.synchronize(model.device)
     t0 = time.perf_counter()
     final_state = ts.optimize(
         system=sim_state,
@@ -323,8 +290,6 @@ def run_torchsim_optimization(
         autobatcher=autobatcher,
         init_kwargs=init_kwargs or None,
     )
-    if model.device.type == "cuda":
-        torch.cuda.synchronize(model.device)
     elapsed = time.perf_counter() - t0
 
     final_states = (
@@ -360,7 +325,7 @@ def _save_and_print(results: list[dict[str, Any]], tag: str) -> None:
     print(json.dumps(results, indent=2, default=str))
 
 
-def main() -> None:  # noqa: PLR0915
+def main() -> None:
     """Entry point."""
     args = parse_args()
     device = torch.device(args.device)
@@ -369,13 +334,12 @@ def main() -> None:  # noqa: PLR0915
 
     print(
         f"Optimization throughput: {args.model} / {args.optimizer} "
-        f"on {args.n_structures} {args.dataset} structures ({device}, {args.dtype})"
+        f"on {args.n_structures} WBM structures ({device}, {args.dtype})"
     )
 
-    print("Loading structures...")
+    print("Loading WBM structures...")
     t0 = time.perf_counter()
-    sample = _sample_wbm_structures if args.dataset == "wbm" else _copper_structures
-    structures = sample(args.n_structures, args.seed)
+    structures = _sample_wbm_structures(args.n_structures, args.seed)
     load_s = time.perf_counter() - t0
     print(f"  Loaded {len(structures)} structures in {load_s:.2f}s")
 
@@ -398,18 +362,6 @@ def main() -> None:  # noqa: PLR0915
     model, calculator, memory_scales_with = load_model(
         args.model, args.model_path, device, dtype
     )
-
-    import torch_sim as ts
-
-    warmup_kwargs = {}
-    if args.cell_filter != "none":
-        warmup_kwargs["cell_filter"] = ts.CellFilter[args.cell_filter]
-    if args.warmup_steps:
-        init_fn, step_fn = ts.OPTIM_REGISTRY[ts.Optimizer[args.optimizer]]
-        warmup_state = init_fn(sim_state.clone(), model, **warmup_kwargs)
-        for _ in range(args.warmup_steps):
-            warmup_state = step_fn(warmup_state, model)
-        del warmup_state
 
     if not args.skip_ase:
         n_ase = min(args.ase_n_structures, len(structures))
@@ -435,23 +387,16 @@ def main() -> None:  # noqa: PLR0915
         f"Running torch-sim {args.optimizer.upper()} (max_steps={args.max_steps}, "
         f"f_max={args.f_max}, cell_filter={args.cell_filter})..."
     )
-    runs = []
-    for repeat in range(args.repeats):
-        ts_metrics = run_torchsim_optimization(
-            sim_state=sim_state.clone(),
-            model=model,
-            memory_scales_with=memory_scales_with,
-            optimizer_name=args.optimizer,
-            cell_filter_name=args.cell_filter,
-            max_steps=args.max_steps,
-            f_max=args.f_max,
-            max_atoms=max_atoms,
-        )
-        runs.append(ts_metrics)
-        print(f"  Repeat {repeat + 1}: {ts_metrics}", flush=True)
-    ts_metrics = dict(runs[0])
-    for key in ("total_s", "s_per_structure", "structures_per_min"):
-        ts_metrics[key] = float(np.median([run[key] for run in runs]))
+    ts_metrics = run_torchsim_optimization(
+        sim_state=sim_state,
+        model=model,
+        memory_scales_with=memory_scales_with,
+        optimizer_name=args.optimizer,
+        cell_filter_name=args.cell_filter,
+        max_steps=args.max_steps,
+        f_max=args.f_max,
+        max_atoms=max_atoms,
+    )
     print(
         f"  torch-sim: {ts_metrics['n_converged']}/{ts_metrics['n_relaxed']} converged "
         f"— {ts_metrics['structures_per_min']} structures/min"
@@ -464,10 +409,6 @@ def main() -> None:  # noqa: PLR0915
 
     row = {
         "model": args.model,
-        "dataset": args.dataset,
-        "repeats": args.repeats,
-        "warmup_steps": args.warmup_steps,
-        "times_s": json.dumps([run["total_s"] for run in runs]),
         "optimizer": args.optimizer,
         "cell_filter": args.cell_filter,
         "dtype": args.dtype,
